@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+import unittest.mock
 from pathlib import Path
 
 import numpy as np
@@ -312,6 +313,151 @@ class ExcecaoRegistradaTest(unittest.TestCase):
         sobra, usadas = fl._aplicar_excecao(vazio, "c.mp4", [caixa])
         self.assertEqual(sobra, [caixa])
         self.assertEqual(usadas, [])
+
+
+class PersistenciaNaSementeTest(unittest.TestCase):
+    """Incidente 09/10/2026 (corredor do Sukuna): a persistencia era medida no blob JA
+    DILUIDO, entao um logo real (0.975) e bordas estaticas de cenario (ate 0.21 no blob,
+    0.58-0.73 na semente) pontuavam juntos e o detector reprovava clipe limpo.
+    Medir na SEMENTE separa os dois."""
+
+    def _logo_fixo(self, n=48, x=10, y=30):
+        import cv2
+        rng = np.random.default_rng(0)
+        q = []
+        for i in range(n):
+            f = rng.integers(30, 90, (H, W, 3), dtype=np.uint8)
+            f = cv2.circle(f, (20 + i * 6, 140), 18, (200, 200, 200), -1)
+            cv2.putText(f, "LOGO", (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            q.append(f)
+        return q
+
+    def test_marca_real_e_detectada(self):
+        cx = fl.caixas_persistentes(self._logo_fixo(), fl.cfg())
+        self.assertGreaterEqual(len(cx), 1, "um logo fixo por 48 quadros tem que ser achado")
+        self.assertGreater(cx[0]["persistencia"], 0.9, "logo real persiste ~1.0")
+        self.assertGreater(cx[0]["densidade"], 0.18)
+
+    def test_cenario_estatico_nao_vira_marca(self):
+        """Bloco parado no meio do quadro (borda de cenario) com fundo variando muito:
+        NAO pode virar 'marca d'agua'. Era o falso positivo do corredor."""
+        import cv2
+        rng = np.random.default_rng(7)
+        q = []
+        for i in range(48):
+            f = rng.integers(20, 110, (H, W, 3), dtype=np.uint8)
+            cv2.rectangle(f, (150, 60), (250, 170), (240, 240, 240), 3)   # borda FIXA
+            f = cv2.circle(f, (60 + i * 7, 220), 25, (150, 150, 150), -1)  # movimento forte
+            q.append(f)
+        cx = fl.caixas_persistentes(q, fl.cfg())
+        self.assertEqual(cx, [], "borda estatica de cenario nao pode reprovar o clipe")
+
+    def test_persistencia_reportada_e_da_semente(self):
+        """O campo `persistencia` tem que refletir os pixels ACIMA do limiar, nunca a
+        media do blob dilatado (que diluia 0.9 para 0.08)."""
+        import inspect
+        src = inspect.getsource(fl.caixas_persistentes)
+        self.assertIn("persist_seed", src)
+        self.assertNotIn("persist[rot == k]", src)
+
+    def test_blob_esparso_e_descartado(self):
+        """Semente esparsa (poucos pixels densos num blob grande) nao e logo."""
+        c = fl.cfg()
+        self.assertGreater(float(c["densidade_seed_min"]), 0.0)
+        self.assertLessEqual(float(c["densidade_seed_min"]), 1.0)
+
+
+class QuadrosTravadosTest(unittest.TestCase):
+    """Incidente 09/10/2026: `_quadros` lia o pipe do ffmpeg com `read()` SEM timeout.
+    O ffmpeg travou no OCR pos-delogo e a esteira ficou 32 min parada — nem terminava nem
+    falhava. Agora o silencio tem teto e vira erro alto (falha fechada)."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = Path(tempfile.mkdtemp())
+        self.video = self.tmp / "c.mp4"
+        self.video.write_bytes(b"nao importa")
+
+    def test_ffmpeg_travado_levanta_erro_alto(self):
+        """O ffmpeg abre o pipe e nunca escreve: a thread de leitura fica presa no read(),
+        a fila expira e a etapa falha com erro alto em vez de congelar."""
+        import threading
+
+        class PipeMudo:
+            def __init__(self):
+                self.liberado = threading.Event()
+            def read(self, _n):
+                self.liberado.wait(30)      # preso como um read() de pipe travado
+                return b""
+            def close(self):
+                self.liberado.set()
+        class ProcMudo:
+            def __init__(self):
+                self.stdout = PipeMudo()
+                self.killed = False
+            def kill(self):
+                self.killed = True
+                self.stdout.liberado.set()
+            def wait(self, timeout=None):
+                return 0
+        proc = ProcMudo()
+
+        with unittest.mock.patch.object(fl.subprocess, "Popen", return_value=proc), \
+             unittest.mock.patch.object(fl, "TIMEOUT_S", 0.05), \
+             unittest.mock.patch.object(fl, "_duracao", return_value=10.0):
+            gerador = fl._quadros(self.video, 2.0)
+            with self.assertRaises(RuntimeError) as ctx:
+                next(gerador)
+        msg = str(ctx.exception)
+        self.assertIn("parou de entregar quadros", msg)
+        self.assertIn("c.mp4", msg)
+        self.assertTrue(proc.killed, "ffmpeg travado tem que ser morto")
+
+    def test_clipe_curto_normal_continua_lerdo(self):
+        """O teto e por SILENCIO, nao por duracao: clipe que entrega quadros passa inteiro."""
+        q = np.zeros((H, W, 3), np.uint8)
+        tam = W * H * 3
+        dados = q.tobytes() + q.tobytes() + q.tobytes()   # 3 quadros e depois EOF
+
+        class PipeFixo:
+            def __init__(self, buf):
+                self.buf, self.i = buf, 0
+            def read(self, n):
+                parte = self.buf[self.i:self.i + n]
+                self.i += len(parte)
+                return parte
+            def close(self):
+                pass
+        class ProcFixo:
+            def __init__(self, buf):
+                self.stdout = PipeFixo(buf)
+            def kill(self):
+                pass
+            def wait(self, timeout=None):
+                return 0
+
+        with unittest.mock.patch.object(fl.subprocess, "Popen", return_value=ProcFixo(dados)), \
+             unittest.mock.patch.object(fl, "_duracao", return_value=1.0):
+            quadros = list(fl._quadros(self.video, 2.0))
+        self.assertEqual(len(quadros), 3)
+        self.assertEqual(quadros[0].shape, (H, W, 3))
+
+    def test_nao_usa_select_no_pipe(self):
+        """Regressao: no Windows `select` so aceita soquete e explode num pipe do ffmpeg
+        (WinError 10038). O teto de silencio tem que vir de thread + fila."""
+        import inspect
+        src = inspect.getsource(fl._quadros)
+        self.assertNotIn("select.select", src)
+        self.assertIn("queue.Queue", src)
+        self.assertIn("Thread", src)
+
+    def test_cache_pos_limpeza_tem_arquivo_proprio(self):
+        """O OCR de verificacao precisa de cache proprio: sem ele relia o clipe inteiro
+        de novo a cada delogo (era onde o ffmpeg travava)."""
+        import inspect
+        src = inspect.getsource(fl.auditar_projeto)
+        self.assertIn("__poslimpeza", src)
+        self.assertNotIn('ocr_do_clipe(clip, float(c["ocr_fps_verificacao"]), None, c)', src)
 
 
 if __name__ == "__main__":

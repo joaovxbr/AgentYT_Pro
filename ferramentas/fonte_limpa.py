@@ -24,8 +24,10 @@ Relatorio: qa/fonte_limpa.json + qa/fonte_limpa.md. Limiares em config/porteiros
 from __future__ import annotations
 
 import json
+import queue
 import shutil
 import subprocess
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -34,9 +36,17 @@ import _vx  # noqa: F401
 from _vx import config as vx_config
 
 W, H = 480, 270
+
+# Teto de silencio do ffmpeg ao entregar quadros crus (s). Nao e o tempo total do clipe:
+# e quanto o processo pode ficar SEM progresso antes de ser considerado travado.
+TIMEOUT_S = 60.0
+
 PADRAO = {
     "amostras_marca": 48,
     "persistencia_min": 0.55,        # fracao dos quadros em que o pixel e borda
+    "densidade_seed_min": 0.18,      # fracao do blob que veio da semente (logo e denso;
+                                     # borda estatica de cenario e esparsa — ver comentario
+                                     # em caixas_persistentes, incidente corredor 09/10/2026)
     "area_min_px": 60,               # caixa minima (em 480x270)
     "variacao_min_cena": 8.0,        # o resto do quadro precisa mudar (clipe nao estatico)
     "margem_borda": 0.14,            # caixa dentro desta margem = "marca de canto" (zoom resolve)
@@ -75,21 +85,70 @@ def _duracao(video: Path) -> float:
         return 0.0
 
 
-def _quadros(video: Path, fps: float, w: int = W, h: int = H):
+def _quadros(video: Path, fps: float, w: int = W, h: int = H, dur: float | None = None):
+    """Le quadros crus do ffmpeg. FALHA FECHADA: ffmpeg que travar derruba a etapa com
+    erro alto, nunca congela a esteira (incidente 09/10/2026 — OCR pos-delogo ficou 32 min
+    parado num `read()` sem timeout e a esteira nao terminava nem falhava).
+
+    O teto de silencio usa uma THREAD de leitura, nao `select()`: no Windows `select` so
+    aceita soquete e explode (WinError 10038) num pipe do ffmpeg — foi assim que o primeiro
+    conserto se revelou errado antes de valer em producao.
+
+    `dur` evita repetir o ffprobe quando o chamador ja sabe a duracao (era chamado em
+    `_quadros`, `detectar_marca` e `auditar_projeto` para o MESMO arquivo)."""
     import render_dispatch as rd
     cmd = [rd.ffmpeg_bin(), "-v", "error", "-i", str(video), "-vf", f"fps={fps},scale={w}:{h}",
            "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     tam = w * h * 3
+    d = _duracao(video) if dur is None else dur
+    # quantos quadros esperar + folga: o limite e por PROGRESSO, nao por relogio — um clipe
+    # longo demora mais, mas o ffmpeg nunca fica mais que TIMEOUT_S sem entregar 1 quadro.
+    esperados = int(d * fps) + 2 if d > 0 else 0
+    fila: queue.Queue = queue.Queue(maxsize=8)
+    _FIM = object()
+
+    def _bombear():
+        try:
+            while True:
+                buf = p.stdout.read(tam)
+                fila.put(buf)
+                if len(buf) < tam:
+                    break
+        except (OSError, ValueError):
+            pass
+        finally:
+            try:
+                fila.put(_FIM, timeout=5)
+            except queue.Full:
+                pass
+
+    leitor = threading.Thread(target=_bombear, daemon=True)
+    leitor.start()
+    lidos = 0
     try:
         while True:
-            buf = p.stdout.read(tam)
-            if len(buf) < tam:
+            try:
+                buf = fila.get(timeout=TIMEOUT_S)
+            except queue.Empty:
+                p.kill()
+                raise RuntimeError(
+                    f"ffmpeg parou de entregar quadros por {TIMEOUT_S}s em {video.name} "
+                    f"({lidos} quadros lidos" + (f" de ~{esperados})" if esperados else ")"))
+            if buf is _FIM or len(buf) < tam:
                 break
+            lidos += 1
             yield np.frombuffer(buf, np.uint8).reshape(h, w, 3)
     finally:
-        p.stdout.close()
-        p.wait()
+        try:
+            p.stdout.close()
+        except OSError:
+            pass
+        try:
+            p.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            p.wait()
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +184,7 @@ def caixas_persistentes(quadros: list[np.ndarray], c: dict | None = None) -> lis
         return []                                   # clipe estatico: tudo "persiste"
     mascara = (persist >= float(c["persistencia_min"])).astype(np.uint8)
     mascara = sem_linhas_de_borda(mascara)
+    semente = mascara                                # pixels ACIMA do limiar (a marca de verdade)
     mascara = cv2.dilate(mascara, np.ones((5, 9), np.uint8))
     n, rot, stats, _ = cv2.connectedComponentsWithStats(mascara, 8)
     out = []
@@ -137,11 +197,26 @@ def caixas_persistentes(quadros: list[np.ndarray], c: dict | None = None) -> lis
         if (w <= 0.03 * W and (x <= 0.02 * W or x + w >= 0.98 * W)) or \
            (h <= 0.03 * H and (y <= 0.02 * H or y + h >= 0.98 * H)):
             continue                                # emenda do pad borrado (normalizacao 16:9)
+        # A persistencia TEM que ser medida na SEMENTE (pixels >= persistencia_min), nunca no
+        # blob diluido. Incidente 09/10/2026 (corredor do Sukuna): o mean sobre o blob diluido
+        # devolvia 0.08-0.21 mesmo com pixels de 0.9 dentro — e uma marca FALSA (borda estatica
+        # de cenario) pontuava igual a uma marca REAL (logo fixo: 0.24 x 0.24). Sem essa
+        # correcao o detector nao separava nada e reprovava clipe limpo.
+        dentro = semente[y:y + h, x:x + w]
+        if not dentro.any():
+            continue
+        persist_seed = float(persist[y:y + h, x:x + w][dentro > 0].mean())
+        densidade = float(dentro.mean())
+        if persist_seed < float(c["persistencia_min"]):
+            continue
+        if densidade < float(c["densidade_seed_min"]):
+            continue                                # blob esparso: borda solta, nao um logo
         m = float(c["margem_borda"])
         canto = (x < W * m or x + w > W * (1 - m)) and (y < H * m or y + h > H * (1 - m))
         borda = x < W * m or x + w > W * (1 - m) or y < H * m or y + h > H * (1 - m)
         out.append({"x": x / W, "y": y / H, "w": w / W, "h": h / H, "area": area,
-                    "persistencia": round(float(persist[rot == k].mean()), 3),
+                    "persistencia": round(persist_seed, 3),
+                    "densidade": round(densidade, 3),
                     "posicao": "canto" if canto else ("borda" if borda else "centro")})
     return sorted(out, key=lambda b: -b["area"])
 
@@ -383,7 +458,8 @@ def agrupar_ocr(amostras: list[tuple[float, list[dict]]], dur: float, c: dict | 
     return {"marcas": marcas, "texto_linha": linha}
 
 
-def ocr_do_clipe(video: Path, fps: float, cache: Path | None = None, c: dict | None = None) -> list:
+def ocr_do_clipe(video: Path, fps: float, cache: Path | None = None, c: dict | None = None,
+                 dur: float | None = None) -> list:
     """[(t, caixas_ocr)] a `fps`. Cache por nome+tamanho+mtime (o original nao muda)."""
     c = c or cfg()
     video = Path(video)
@@ -396,7 +472,7 @@ def ocr_do_clipe(video: Path, fps: float, cache: Path | None = None, c: dict | N
             return [(t, cx) for t, cx in dados["amostras"]]
     motor = _motor_ocr()
     amostras = []
-    for i, q in enumerate(_quadros(video, fps, OCR_W, OCR_H)):
+    for i, q in enumerate(_quadros(video, fps, OCR_W, OCR_H, dur=dur)):
         res, _ = motor(q[:, :, ::-1].copy())          # RapidOCR espera BGR
         amostras.append((round(i / fps, 2), caixas_ocr(res, c)))
     if cache is not None:
@@ -470,13 +546,13 @@ def chroma_no_quadro(q: np.ndarray) -> float:
     return round(frac if uniforme else 0.0, 3)
 
 
-def detectar_marca(video: Path, c: dict | None = None) -> list[dict]:
+def detectar_marca(video: Path, c: dict | None = None, dur: float | None = None) -> list[dict]:
     c = c or cfg()
-    dur = _duracao(video)
+    dur = _duracao(video) if dur is None else dur
     if dur <= 0:
         return []
     fps = max(0.2, min(4.0, float(c["amostras_marca"]) / dur))
-    quadros = list(_quadros(video, fps))
+    quadros = list(_quadros(video, fps, dur=dur))
     return caixas_persistentes(quadros, c)
 
 
@@ -522,12 +598,12 @@ def linha_do_tempo_legenda(video: Path, c: dict | None = None) -> list[tuple[flo
     return varrer(video, c)["legenda"]
 
 
-def varrer(video: Path, c: dict | None = None) -> dict:
+def varrer(video: Path, c: dict | None = None, dur: float | None = None) -> dict:
     """Uma passada a legenda_fps: legenda queimada, chroma verde e marcas por trecho."""
     c = c or cfg()
     fps = float(c["legenda_fps"]) * 2          # 4 fps: marca por trecho precisa de mais quadros
     leg, chroma, quadros = [], [], []
-    for i, q in enumerate(_quadros(video, fps)):
+    for i, q in enumerate(_quadros(video, fps, dur=dur)):
         t = round(i / fps, 2)
         quadros.append(q)
         if i % 2 == 0:
@@ -648,17 +724,17 @@ def auditar_projeto(d: Path, corrigir: bool = False) -> dict:
             item["restaurado_do_original"] = True
         dur = _duracao(clip)
         # OCR no estado original do clipe: marca de texto (logo/copyright) e texto passageiro
-        ocr = agrupar_ocr(ocr_do_clipe(clip, float(c["ocr_fps"]), d / "qa" / "fonte_ocr" / f"{clip.stem}.json", c),
-                          dur, c)
+        cache_ocr = d / "qa" / "fonte_ocr" / f"{clip.stem}.json"
+        ocr = agrupar_ocr(ocr_do_clipe(clip, float(c["ocr_fps"]), cache_ocr, c, dur=dur), dur, c)
         item["marca_ocr"] = ocr["marcas"]
-        caixas = juntar_caixas(detectar_marca(clip, c), [m for m in ocr["marcas"] if m["todo"]])
+        caixas = juntar_caixas(detectar_marca(clip, c, dur=dur), [m for m in ocr["marcas"] if m["todo"]])
         item["marca"] = caixas
         recorte = None
         if caixas and corrigir:
             item["limpeza"] = limpar_clipe(clip, caixas, c)
             recorte = item["limpeza"]["recorte"]
-            item["marca_depois"] = detectar_marca(clip, c)
-        v = varrer(clip, c)
+            item["marca_depois"] = detectar_marca(clip, c, dur=dur)
+        v = varrer(clip, c, dur=dur)
         v["marcas_trecho"], item["legenda_parada"] = separar_trechos(v, c)
         # marca de texto so num trecho (OCR), levada para as coordenadas do clipe ja recortado
         trecho_ocr = [no_recorte(m, recorte) for m in ocr["marcas"] if not m["todo"]]
@@ -666,11 +742,16 @@ def auditar_projeto(d: Path, corrigir: bool = False) -> dict:
         # marca d'agua de TRECHO (so parte do clipe): delogo so naquele intervalo
         if v["marcas_trecho"] and corrigir:
             item["limpeza_trechos"] = limpar_trechos(clip, v["marcas_trecho"])
-            v = varrer(clip, c)
+            v = varrer(clip, c, dur=dur)
             v["marcas_trecho"], _ = separar_trechos(v, c)
         if corrigir and (caixas or item.get("limpeza_trechos")):
-            # prova real: OCR de novo no clipe limpo; marca que o OCR ainda le reprova
-            depois = agrupar_ocr(ocr_do_clipe(clip, float(c["ocr_fps_verificacao"]), None, c), dur, c)
+            # prova real: OCR de novo no clipe limpo; marca que o OCR ainda le reprova.
+            # Cache PROPRIO (pos-limpeza): o clipe ja foi reescrito, entao a chave
+            # nome+tam+mtime muda sozinha e o cache nunca mente. Sem cache aqui a passada
+            # re-lia o clipe INTEIRO de novo — era o grosso do custo e onde o ffmpeg travou.
+            cache_ver = d / "qa" / "fonte_ocr" / f"{clip.stem}__poslimpeza.json"
+            depois = agrupar_ocr(ocr_do_clipe(clip, float(c["ocr_fps_verificacao"]), cache_ver, c,
+                                             dur=dur), dur, c)
             item["marca_ocr_depois"] = depois["marcas"]
             item["marca_depois"] = juntar_caixas(item.get("marca_depois") or [],
                                                  [m for m in depois["marcas"] if m["todo"]])
