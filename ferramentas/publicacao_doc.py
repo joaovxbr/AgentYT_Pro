@@ -230,13 +230,22 @@ def gerar(projeto_dir: Path, intro_s: float, duracao_master: float, shorts: dict
            "descricao_caracteres": len(descricao), "capitulos": caps, "tags": tags,
            "tags_caracteres": sum(len(t) for t in tags) + len(tags) - 1, "hashtags": hashtags,
            "comentario_fixado": comentario, "problemas": problemas}
+    doc["miniatura"] = f"saidas/{_nome_thumb(projeto_dir)}"
     (projeto_dir / "saidas" / "PUBLICACAO.md").write_text(_markdown(m, doc, shorts or {}, slug), encoding="utf-8")
     return doc
+
+
+def _nome_thumb(projeto_dir: Path) -> str:
+    """Nome do arquivo de miniatura que EXISTE no projeto (as duas portas escrevem nomes
+    diferentes). Sem arquivo nenhum, cai no nome canonico para o aviso ficar explicito."""
+    import entrega as _ent
+    return _ent._thumb(projeto_dir).name
 
 
 def _markdown(m: dict, d: dict, shorts: dict, slug: str) -> str:
     faixa, pers = m.get("faixa", ""), m.get("personagem", "")
     anime = str(m.get("anime", "")).split("(")[0].strip()
+    miniatura = d.get("miniatura") or f"saidas/{slug}_capa_ia.jpg"
     L = [f"# Publicação — {pers} · {faixa}", ""]
     L += ["## Vídeo principal (YouTube)", "", "### Título (use o 1º; os outros são para teste A/B)", ""]
     for i, t in enumerate(d["titulos"], 1):
@@ -247,7 +256,7 @@ def _markdown(m: dict, d: dict, shorts: dict, slug: str) -> str:
           "```text", ", ".join(d["tags"]), "```", "",
           "### Comentário fixado", "", "```text", d["comentario_fixado"], "```", "",
           "### Configuração do upload", "",
-          f"- Miniatura: `saidas/{slug}_capa_ia.jpg` (1280x720)",
+          f"- Miniatura: `{miniatura}` (1280x720)",
           "- Categoria: Música · Idioma do vídeo: Português (Brasil)",
           "- Público: não é conteúdo para crianças",
           "- Tela final: usar os últimos 5 s (End Card) com vídeo recomendado + botão de inscrição",

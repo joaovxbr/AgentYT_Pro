@@ -36,6 +36,31 @@ ITENS = [
     ("artes_extras", "Banner do canal + capa 3000 px"),
 ]
 
+# Dois nomes para a MESMA miniatura 1280x720, cada um escrito por uma porta diferente:
+#   estudio.py capa      -> <slug>_capa_youtube.jpg   (artes_base.compor_capa_youtube)
+#   estudio.py artes-ia  -> <slug>_capa_ia.jpg        (gerador_artes_ia, ComfyUI)
+# Antes cada consumidor cravava um nome: quem tinha a capa pronta mas rodou so a porta
+# `capa` era reprovado com "thumb ausente", e o lancamento publicava um caminho que nao
+# existia. Um resolvedor so, na ordem canonica: primeiro o nome que o pacote sempre usou,
+# depois o nome novo. Tamanho e peso continuam sendo conferidos depois (nao afrouxa nada).
+NOMES_THUMB = ("{slug}_capa_ia.jpg", "{slug}_capa_youtube.jpg")
+
+
+def _thumb(d: Path) -> Path:
+    """Caminho da miniatura deste projeto (existe um dos nomes aceitos).
+
+    Sem arquivo nenhum, devolve o nome canonico (`_capa_ia.jpg`) para que a mensagem de
+    erro e o `publicar.py miniatura` continuem apontando o lugar esperado.
+    """
+    d, slug = Path(d), Path(d).name
+    saidas = d / "saidas"
+    for modelo in NOMES_THUMB:
+        p = saidas / modelo.format(slug=slug)
+        if p.is_file():
+            return p
+    return saidas / NOMES_THUMB[0].format(slug=slug)
+
+
 
 def _json(p: Path, padrao=None):
     try:
@@ -91,7 +116,7 @@ def conferir(d: Path, pacote: dict | None) -> dict[str, str]:
     falta: dict[str, str] = {}
     master = d / m.get("master", f"saidas/{slug}_master.mp4")
     falta["master"] = "" if master.is_file() else f"master ausente ({master.relative_to(d)}): rode estudio.py promover"
-    thumb = saidas / f"{slug}_capa_ia.jpg"
+    thumb = _thumb(d)
     if not thumb.is_file():
         falta["thumb"] = "thumb ausente: estudio.py artes-ia"
     else:
@@ -160,7 +185,7 @@ def executar(slug: str, n_shorts: int = 3, forcar_artes: bool = False) -> dict:
         print("  [entrega] Shorts...")
         shorts_mod.executar(slug, n=n_shorts)
         log.append("shorts gerados")
-    thumb = saidas / f"{slug}_capa_ia.jpg"
+    thumb = _thumb(d)
     if forcar_artes or not thumb.is_file() or not (saidas / f"{slug}_banner_canal.jpg").is_file():
         print("  [entrega] thumbnail, banner e capa (ComfyUI)...")
         import gerador_artes_ia as art

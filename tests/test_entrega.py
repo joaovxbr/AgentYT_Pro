@@ -144,5 +144,52 @@ class FolhaNaEntregaTests(unittest.TestCase):
         self.assertIn("folha por quadro: 4608 quadros", md)
 
 
+class MiniaturaContractTests(unittest.TestCase):
+    """A porta `capa` escreve `_capa_youtube.jpg`; o pacote exigia `_capa_ia.jpg`.
+
+    Dois nomes para a MESMA miniatura 1280x720: 4 consumidores cobravam um arquivo que
+    a ferramenta que gera a capa nunca escrevia. `conferir` reprovava a entrega de um
+    projeto com capa pronta, e o `lancamento` apontava miniatura inexistente.
+    """
+
+    def _projeto(self, tmp: str) -> Path:
+        d = Path(tmp) / "x"
+        (d / "saidas" / "shorts").mkdir(parents=True)
+        (d / "projeto.json").write_text(json.dumps({"master": "saidas/x_master.mp4"}), encoding="utf-8")
+        return d
+
+    def test_thumb_aceita_a_capa_youtube(self):
+        """A capa que a porta `capa` gera de verdade conta como miniatura valida."""
+        with tempfile.TemporaryDirectory() as tmp:
+            d = self._projeto(tmp)
+            (d / "saidas" / "x_master.mp4").write_bytes(b"v")
+            Image.new("RGB", (1280, 720)).save(d / "saidas" / "x_capa_youtube.jpg")
+            for n in ("x_banner_canal.jpg", "x_capa_streaming_3000.jpg"):
+                Image.new("RGB", (8, 8)).save(d / "saidas" / n)
+            (d / "saidas" / "shorts" / "01.mp4").write_bytes(b"s")
+            (d / "saidas" / "shorts" / "pacote.json").write_text(json.dumps({"shorts": [
+                {"arquivo": "01.mp4", "titulo": "t", "descricao": "d", "tiktok": "k"}]}), encoding="utf-8")
+            self.assertEqual({k: v for k, v in entrega.conferir(d, PACOTE_OK).items() if v}, {})
+
+    def test_thumb_tamanho_errado_ainda_reprova(self):
+        """Aceitar o novo nome NAO afrouxa o padrao: 1920x1080 continua reprovado."""
+        with tempfile.TemporaryDirectory() as tmp:
+            d = self._projeto(tmp)
+            Image.new("RGB", (1920, 1080)).save(d / "saidas" / "x_capa_youtube.jpg")
+            self.assertIn("fora do padrao", entrega.conferir(d, PACOTE_OK)["thumb"])
+
+    def test_mesma_thumb_para_conferir_e_lancamento(self):
+        """Os dois consumidores precisam apontar para o MESMO arquivo, nunca um cada."""
+        with tempfile.TemporaryDirectory() as tmp:
+            d = self._projeto(tmp)
+            Image.new("RGB", (1280, 720)).save(d / "saidas" / "x_capa_youtube.jpg")
+            import distribuicao_social_pro as soc
+            with patch.object(soc, "pacote_lancamento", wraps=soc.pacote_lancamento):
+                pass
+            alvo = entrega._thumb(d)
+            self.assertEqual(alvo, d / "saidas" / "x_capa_youtube.jpg")
+            self.assertTrue(alvo.is_file())
+
+
 if __name__ == "__main__":
     unittest.main()

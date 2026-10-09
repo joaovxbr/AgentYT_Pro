@@ -117,7 +117,7 @@ altura** — são fios, não linhas de texto.
 O gate já tinha um critério anti-ruído (exigir 2 leituras em 1.5 s), mas **nenhum
 critério de tamanho**: um fio de retícula passava.
 
-**Correção:** dois limiares novos em `config/porteiros.json[fonte]`:
+**Correção:** dois limiares novos em `config/porteiros.json`, na seção `fonte`:
 
 ```json
 "texto_area_min": 0.0015,

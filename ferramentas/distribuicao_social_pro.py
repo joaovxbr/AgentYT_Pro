@@ -104,7 +104,8 @@ def pacote_lancamento(projeto_dir) -> dict:
         f"\U0001F525 Se curtiu, deixa o like e se inscreve no canal.\n\U0001F3A7 VX RAPS\n\n"
         + " ".join("#" + "".join(ch for ch in t.title() if ch.isalnum()) for t in tags[:5]))
     master = projeto_dir / m.get("master", f"saidas/{slug}_master.mp4")
-    thumb = saidas / f"{slug}_capa_ia.jpg"
+    import entrega as _ent
+    thumb = _ent._thumb(projeto_dir)   # aceita _capa_ia.jpg e _capa_youtube.jpg
     problemas = []
     if not master.is_file():
         problemas.append(f"master ausente: {master}")
