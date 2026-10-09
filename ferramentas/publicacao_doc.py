@@ -19,9 +19,15 @@ import re
 from pathlib import Path
 
 import semantic_scene_matcher as sm
+import semantic_vision as _sv
 
 LIM_TITULO, LIM_DESC, LIM_TAGS, MIN_CAP = 100, 5000, 500, 10.0
 TIPOS_FIM = {"vx_end_card"}
+
+
+def _sem(manifesto: dict) -> dict:
+    """`scene_semantics` normalizado (aceita a forma curta em lista de ids)."""
+    return _sv.scene_semantics_cfg(manifesto or {})
 
 
 def _json(p: Path, default=None):
@@ -47,7 +53,7 @@ def _limpa_hashtags(texto: str) -> str:
 def nomes_proprios(m: dict) -> set:
     """Tokens que devem ficar capitalizados: personagem, anime, faixa e rotulos do manifesto."""
     fontes = [m.get("personagem", ""), str(m.get("anime", "")).split("(")[0], m.get("faixa", "")]
-    for r in (m.get("scene_semantics") or {}).get("labels", []):
+    for r in _sem(m).get("labels", []):
         fontes.append(r.get("name", ""))
     out = set()
     for f in fontes:
@@ -163,9 +169,9 @@ def gerar(projeto_dir: Path, intro_s: float, duracao_master: float, shorts: dict
     intenso = max((l for l in linhas), key=lambda l: sm.interpretar_texto(l["text"], m)["target_intensity"],
                   default={"text": faixa})["text"]
 
-    tecnicas = [r.get("name") for r in (m.get("scene_semantics") or {}).get("labels", [])
+    tecnicas = [r.get("name") for r in _sem(m).get("labels", [])
                 if r.get("kind") == "action" and r.get("name")]
-    entidades = [r.get("name") for r in (m.get("scene_semantics") or {}).get("labels", [])
+    entidades = [r.get("name") for r in _sem(m).get("labels", [])
                  if r.get("kind") == "entity" and r.get("name") and r.get("name") != pers]
 
     # ---- titulos ----

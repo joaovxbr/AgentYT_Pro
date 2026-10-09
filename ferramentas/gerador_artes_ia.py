@@ -12,6 +12,8 @@ Identidade (kanji, tags, descricao) vem do projeto.json -> ``imagem_ia``; nada d
 personagem hardcodado aqui.
 """
 from pathlib import Path
+
+from semantic_vision import imagem_ia_cfg
 import io
 import os
 import json
@@ -51,7 +53,7 @@ KANJIS_POR_ANIME = {
 
 def kanji_do_manifesto(manifesto: dict):
     """(coluna_kanji, rotulo) ou None. Prioriza imagem_ia.kanji do projeto."""
-    bloco = manifesto.get("imagem_ia") or {}
+    bloco = imagem_ia_cfg(manifesto)
     k = bloco.get("kanji")
     if isinstance(k, (list, tuple)) and k and k[0]:
         return str(k[0]), str(k[1]) if len(k) > 1 else ""
@@ -289,7 +291,7 @@ def _hex_rgb(hex_cor: str, padrao: tuple) -> tuple:
 
 def prompt_remoto(manifesto: dict) -> str:
     """Prompt em linguagem natural para APIs remotas, montado so do manifesto."""
-    bloco = manifesto.get("imagem_ia") or {}
+    bloco = imagem_ia_cfg(manifesto)
     personagem = manifesto.get("personagem", "")
     anime = str(manifesto.get("anime", "")).split("(")[0].strip()
     aura = (manifesto.get("cor") or {}).get("destaque", "#FF4500")

@@ -32,6 +32,8 @@ import gerador_imagem_local as gil
 import render_dispatch as rd
 import semantic_scene_matcher as sm
 from manga_auto_pipeline import _replace_interval
+from semantic_vision import imagem_ia_cfg
+from semantic_vision import scene_semantics_cfg
 from style_preset_engine import normalizar
 from timeline_clipe import validar as validar_timeline
 
@@ -132,7 +134,7 @@ def prompt_para_letra(texto: str, concepts: list, targets: list, manifest: dict,
     """Retorna {"tipo": "cena"|"fundo", "tags": str, "fontes": {...}} — sem nomes hardcodados."""
     conceitos_mapa = mapa.get("conceitos", {})
     palavras_mapa = {normalizar(k): v for k, v in (mapa.get("palavras") or {}).items()}
-    bloco = manifest.get("imagem_ia") or {}
+    bloco = imagem_ia_cfg(manifest)
     alvos_tags = bloco.get("tags_alvos") or {}
     personagem = normalizar(manifest.get("personagem", ""))
 
@@ -170,7 +172,7 @@ def _fraqueza(seg: dict, manifest: dict) -> tuple[float, list]:
     """
     m = seg.get("scene_match") or {}
     score = float(m.get("score", 1.0))
-    req = float((manifest.get("scene_semantics") or {}).get("required_score", 0.16))
+    req = float(scene_semantics_cfg(manifest).get("required_score", 0.16))
     scores = m.get("semantic_target_scores") or {}
     falhas = [t for t in m.get("semantic_targets", []) or []
               if t.get("required") and not str(t.get("id", "")).startswith("entity:")

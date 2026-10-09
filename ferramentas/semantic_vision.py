@@ -26,8 +26,86 @@ def normalizar(text: str) -> str:
     return " ".join(value.lower().replace("_", " ").split())
 
 
+def scene_semantics_cfg(manifesto: dict) -> dict:
+    """Normaliza `projeto.json -> scene_semantics` para o formato canonico.
+
+    Formato canonico (todos os consumidores esperam ele)::
+
+        {"enabled": bool, "labels": [{"id":..., "kind":..., "name":...,
+                                      "prompt":..., "aliases":[...], "required":bool}],
+         "strict": bool, "model": str, "pretrained": str, "min_score": float,
+         "required_score": float, ...}
+
+    O manifesto tambem aceita a forma CURTA, uma lista de ids::
+
+        "scene_semantics": ["megumi_fushiguro", "shikigami", ...]
+
+    que significa "rotulos sem prompt explicito". Nesse caso derivamos
+    `id = name = prompt = texto` com `kind = "concept"`. Sem isso qualquer
+    consumidor que faca `cfg.get(...)` estoura com
+    `AttributeError: 'list' object has no attribute 'get'` (cenas-auto).
+    """
+    raw = manifesto.get("scene_semantics")
+    if raw is None or raw == "":
+        return {}
+    if isinstance(raw, str):
+        raw = [raw]
+    if isinstance(raw, list):
+        labels = []
+        for item in raw:
+            if isinstance(item, dict):
+                labels.append(item)
+                continue
+            texto = str(item or "").strip()
+            if not texto:
+                continue
+            labels.append({"id": texto, "kind": "concept", "name": texto,
+                           "prompt": texto.replace("_", " ")})
+        return {"enabled": True, "labels": labels}
+    if isinstance(raw, dict):
+        return raw
+    return {}
+
+
+def imagem_ia_cfg(manifesto: dict) -> dict:
+    """Normaliza `projeto.json -> imagem_ia` para o formato canonico.
+
+    Formato canonico (contrato documentado em `cerebro/historico/AGENTS_v3_legado.md`)::
+
+        {"tags_personagem": "1boy, solo, ...", "tags_cenario": ...,
+         "tags_estilo": ..., "descricao": ..., "negativo": ...,
+         "kanji": ["<coluna>", "<nome>"], "tags_alvos": {...},
+         "clip_identidade": ...}
+
+    O manifesto tambem aceita a forma CURTA, uma lista de tags soltas::
+
+        "imagem_ia": ["jujutsu kaisen anime style", "dark blue shadow energy"]
+
+    que e o atalho para uma identidade simples, sem bloco por campo. Nesse caso
+    juntamos tudo em `tags_estilo` — o campo que os geradores concatenam no
+    prompt sem exigir estrutura. Sem isso qualquer consumidor que faca
+    `bloco.get(...)` estoura com
+    `AttributeError: 'list' object has no attribute 'get'` (titulos, cenas-ia,
+    geradores de imagem).
+    """
+    raw = manifesto.get("imagem_ia")
+    if raw is None or raw == "":
+        return {}
+    if isinstance(raw, str):
+        raw = [raw]
+    if isinstance(raw, list):
+        tags = [str(t).strip() for t in raw if str(t or "").strip()]
+        cfg: dict = {}
+        if tags:
+            cfg["tags_estilo"] = ", ".join(tags)
+        return cfg
+    if isinstance(raw, dict):
+        return raw
+    return {}
+
+
 def profile_from_manifest(manifesto: dict) -> dict:
-    cfg = manifesto.get("scene_semantics") or {}
+    cfg = scene_semantics_cfg(manifesto)
     labels = cfg.get("labels") or []
     clean = []
     for row in labels:

@@ -666,12 +666,18 @@ def _eventos_do_ass(caminho: Path):
 # ---------------------------------------------------------------------------
 
 def carregar_onsets(caminho: Path) -> List[Tuple[float, str]]:
-    """Le a saida do Whisper com word_timestamps. Aceita dois formatos:
+    """Le a saida do Whisper com word_timestamps. Aceita tres formatos:
 
     - lista de segmentos com 'words': [{word,start,end}, ...]  (transcricao.json)
     - lista de palavras direto: [{word,start,end}, ...]        (palavras_vocal.json)
+    - transcricao canonica: {"lines": [{text,start,end,words:[{word,start,end}]}]}
+      (transcricao_canonica.json — timing do gerador, grafia autoral)
 
     Retorna [(start, palavra_normalizada), ...] ordenada por tempo.
+
+    A canonica aninha as palavras DENTRO de `lines`; sem esse caso o gate de
+    `sincronia` lia 0 onsets e reprovava com "sem onsets casados — relogio errado?"
+    mesmo com o arquivo correto (incidente 2026-10-09).
     """
     dados = json.loads(Path(caminho).read_text(encoding="utf-8", errors="replace"))
     palavras: List[Tuple[float, str]] = []
@@ -681,13 +687,28 @@ def carregar_onsets(caminho: Path) -> List[Tuple[float, str]]:
             t = float(w.get("start"))
         except (TypeError, ValueError):
             return
-        token = _norm(str(w.get("word", "")))
+        token = _norm(str(w.get("word") or w.get("text") or ""))
         if token:
             palavras.append((t, token))
 
     if isinstance(dados, dict) and "words" in dados:
         for w in dados["words"]:
             add(w)
+    elif isinstance(dados, dict) and isinstance(dados.get("lines"), list):
+        # transcricao canonica: as palavras vivem dentro de cada linha
+        for item in dados["lines"]:
+            if not isinstance(item, dict):
+                continue
+            ws = item.get("words")
+            if isinstance(ws, list) and ws:
+                for w in ws:
+                    if isinstance(w, dict):
+                        add(w)
+            elif "word" in item:
+                add(item)
+            elif "text" in item:
+                # linha sem word-level: a linha inteira conta como um onset
+                add(item)
     elif isinstance(dados, list):
         for item in dados:
             if isinstance(item, dict) and "words" in item and isinstance(item["words"], list):

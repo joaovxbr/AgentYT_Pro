@@ -17,6 +17,7 @@ from pathlib import Path
 
 from audio_reactive_fx import carregar_picos, relativos
 from render_impact_scene import renderizar_cena_impacto
+from semantic_vision import scene_semantics_cfg
 from style_preset_engine import (
     candidatos_semanticos,
     carregar_presets,
@@ -610,7 +611,7 @@ def janela_de_linha(item: dict, sync: list[dict] | None, audio_duration: float,
 def entidade_protagonista(manifesto: dict) -> str | None:
     """Id do rotulo 'entity' do personagem principal em projeto.json -> scene_semantics.
     Casa pelo nome (qualquer palavra do `personagem` no name/prompt do rotulo); senao o 1o entity."""
-    rotulos = [r for r in ((manifesto.get("scene_semantics") or {}).get("labels") or [])
+    rotulos = [r for r in (scene_semantics_cfg(manifesto).get("labels") or [])
                if isinstance(r, dict) and r.get("kind") == "entity" and r.get("id")]
     if not rotulos:
         return None

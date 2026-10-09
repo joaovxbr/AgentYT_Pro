@@ -27,6 +27,7 @@ import cenas_ia_pipeline as cia
 import gerador_imagem_local as gil
 import render_dispatch as rd
 from manga_auto_pipeline import _replace_interval
+from semantic_vision import imagem_ia_cfg
 from timeline_clipe import fonte as fonte_clip, validar as validar_timeline
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -95,7 +96,7 @@ def arte_titulo(manifest: dict, destino: Path) -> Path:
     d.rectangle(((W - 520) // 2, y + 36, (W + 520) // 2, y + 41), fill=claro + (255,))
     sub = f"{str(manifest.get('personagem', '')).upper()}  \u2022  {anime}"
     _texto_centro(img, y + 66, sub, _fonte("BebasNeue-Regular.ttf", 60), claro)
-    kanji = (manifest.get("imagem_ia") or {}).get("kanji") or []
+    kanji = imagem_ia_cfg(manifest).get("kanji") or []
     jp = Path("C:/Windows/Fonts/msgothic.ttc")
     if kanji and jp.is_file():
         fk = ImageFont.truetype(str(jp), 54)

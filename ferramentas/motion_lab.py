@@ -33,6 +33,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 import _vx  # noqa: F401  (ponte para vx/)
 from vx import projeto as vx_projeto
 from vx.composicao import TIPOS_DERIVADOS
+from semantic_vision import imagem_ia_cfg
 
 RAIZ = Path(__file__).resolve().parents[1]
 CFG_ARQ = RAIZ / "assets" / "design" / "motion_lab.json"
@@ -1325,7 +1326,7 @@ def aparencia_protagonista(manifesto: dict) -> str | None:
     """Descricao VISUAL do personagem principal a partir de projeto.json -> imagem_ia.tags_personagem,
     sem nomes/anime/tags genericas (o CLIP reconhece aparencia muito melhor que nome).
     Gojo: 'white hair, blue eyes, blindfold, black blindfold, uniform'."""
-    tags = str((manifesto.get("imagem_ia") or {}).get("tags_personagem") or "")
+    tags = str(imagem_ia_cfg(manifesto).get("tags_personagem") or "")
     nomes = {p for p in normalizar(f"{manifesto.get('personagem', '')} {manifesto.get('anime', '')}").split()
              if len(p) >= 3}
     visuais = []

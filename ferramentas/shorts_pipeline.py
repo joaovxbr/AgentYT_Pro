@@ -23,6 +23,7 @@ from pathlib import Path
 import pov_lyrics_official as pov
 import semantic_scene_matcher as sm
 from publicacao_doc import frase_natural
+from semantic_vision import scene_semantics_cfg
 from style_preset_engine import normalizar
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,7 +51,7 @@ def fonte_letra(project: Path) -> Path:
 def palavras_especiais(manifest: dict) -> dict:
     """Tecnicas/golpes do manifesto -> fonte de acao; titulo da faixa -> fonte de titulo."""
     out = {}
-    for row in (manifest.get("scene_semantics") or {}).get("labels") or []:
+    for row in (scene_semantics_cfg(manifest).get("labels") or []):
         if str(row.get("kind")) != "action":
             continue
         for nome in [row.get("name", ""), *(row.get("aliases") or [])]:

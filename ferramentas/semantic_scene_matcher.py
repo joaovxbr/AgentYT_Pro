@@ -17,7 +17,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 from scene_intelligence import catalogar_projeto
-from semantic_vision import profile_from_manifest, semantic_targets
+from semantic_vision import profile_from_manifest, scene_semantics_cfg, semantic_targets
 from style_preset_engine import normalizar
 from timeline_clipe import validar as validar_timeline
 from _vx import cache as vx_cache
@@ -673,7 +673,7 @@ def _coverage_report(lyric_lines: list[dict], timeline: dict, manifesto: dict) -
     semantic_misses = []
     required_checks = 0
     required_passes = 0
-    required_score = float((manifesto.get("scene_semantics") or {}).get("required_score", 0.16))
+    required_score = float(scene_semantics_cfg(manifesto).get("required_score", 0.16))
     segments = timeline.get("segments", [])
     section_counts = {}
     for idx, line in enumerate(lyric_lines):
@@ -854,7 +854,7 @@ def executar(
     if somente_planejar:
         return public
 
-    strict = bool((manifesto.get("scene_semantics") or {}).get("strict", False))
+    strict = bool(scene_semantics_cfg(manifesto).get("strict", False))
     coverage = plan.get("coverage", {})
     if strict and coverage.get("uncovered_lines"):
         raise RuntimeError("Scene Matcher: existem linhas cantadas sem resposta visual; veja qa/scene_matcher/plano.json")

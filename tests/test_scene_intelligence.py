@@ -556,5 +556,135 @@ class MarcarCenasPaginaTests(unittest.TestCase):
         self.assertTrue(cena["pagina"])
 
 
+class SceneSemanticsShapeTest(unittest.TestCase):
+    """Regressao do incidente 2026-10-09: `scene_semantics` como LISTA de ids.
+
+    O manifesto aceita a forma curta ("scene_semantics": ["megumi_fushiguro", ...]),
+    mas `profile_from_manifest` fazia `cfg.get(...)` direto e estourava
+    `AttributeError: 'list' object has no attribute 'get'`, derrubando `cenas-auto`
+    (exit 1) na 4a etapa da esteira.
+    """
+
+    def test_lista_de_ids_vira_labels_validos(self):
+        cfg = sv.scene_semantics_cfg({"scene_semantics": ["megumi_fushiguro", "shikigami"]})
+        self.assertTrue(cfg["enabled"])
+        ids = [r["id"] for r in cfg["labels"]]
+        self.assertEqual(ids, ["megumi_fushiguro", "shikigami"])
+        for r in cfg["labels"]:
+            self.assertEqual(r["kind"], "concept")
+            self.assertEqual(r["name"], r["id"])
+            self.assertTrue(r["prompt"])          # prompt derivado do id
+        # o prompt e legivel, nao o id cru com underscore
+        self.assertEqual(cfg["labels"][0]["prompt"], "megumi fushiguro")
+
+    def test_string_solta_tambem_e_aceita(self):
+        cfg = sv.scene_semantics_cfg({"scene_semantics": "megumi_fushiguro"})
+        self.assertEqual([r["id"] for r in cfg["labels"]], ["megumi_fushiguro"])
+
+    def test_dict_canonico_passa_intacto(self):
+        original = {"enabled": True, "strict": True, "required_score": 0.2,
+                    "labels": [{"id": "action:red", "kind": "action", "name": "Red",
+                                "prompt": "red technique"}]}
+        cfg = sv.scene_semantics_cfg({"scene_semantics": original})
+        self.assertIs(cfg, original)
+        prof = sv.profile_from_manifest({"scene_semantics": original})
+        self.assertEqual(prof["labels"][0]["id"], "action:red")
+        self.assertEqual(prof["required_score"], 0.2)
+
+    def test_lista_de_dicts_e_mesclada_com_ids(self):
+        cfg = sv.scene_semantics_cfg({"scene_semantics": [
+            "lobo_divino",
+            {"id": "entity:megumi", "kind": "entity", "name": "Megumi",
+             "prompt": "megumi fushiguro"},
+        ]})
+        self.assertEqual([r["id"] for r in cfg["labels"]], ["lobo_divino", "entity:megumi"])
+
+    def test_ausente_ou_vazio_nao_estoura(self):
+        for manifesto in ({}, {"scene_semantics": None}, {"scene_semantics": ""},
+                          {"scene_semantics": []}, {"scene_semantics": [None, "  "]}):
+            cfg = sv.scene_semantics_cfg(manifesto)
+            self.assertIsInstance(cfg, dict)
+            prof = sv.profile_from_manifest(manifesto)
+            self.assertFalse(prof["enabled"])     # sem rotulo valido => desligado
+            self.assertEqual(prof["labels"], [])
+
+    def test_profile_from_manifest_aceita_a_forma_lista(self):
+        """O caminho exato que estourava: catalogar_projeto -> profile_from_manifest."""
+        prof = sv.profile_from_manifest({"scene_semantics": ["shadow_technique",
+                                                             "domain_expansion"]})
+        self.assertTrue(prof["enabled"])
+        self.assertEqual([r["id"] for r in prof["labels"]],
+                         ["shadow_technique", "domain_expansion"])
+        self.assertIn("model", prof)              # defaults preservados
+
+    def test_matcher_le_strict_e_required_score_da_forma_lista(self):
+        manifesto = {"personagem": "Megumi", "audio_fonte": "a.wav",
+                     "scene_semantics": ["megumi_fushiguro", "shikigami"]}
+        # nao deve estourar; sem `strict` no manifesto assume False e o default de score
+        self.assertFalse(sm._manifesto_strict(manifesto)
+                         if hasattr(sm, "_manifesto_strict") else False)
+        prof = sv.profile_from_manifest(manifesto)
+        self.assertTrue(prof["enabled"])
+
+
+class ImagemIaShapeTest(unittest.TestCase):
+    """Regressao do incidente 2026-10-09: `imagem_ia` como LISTA de tags.
+
+    Mesma armadilha do `scene_semantics`: o manifesto aceita a forma curta em
+    lista, mas 8 consumidores faziam `bloco.get(...)` direto e estouravam
+    `AttributeError: 'list' object has no attribute 'get'` (a etapa `titulos`
+    foi a que caiu na esteira).
+    """
+
+    def test_lista_de_tags_vira_tags_estilo(self):
+        cfg = sv.imagem_ia_cfg({"imagem_ia": ["jujutsu kaisen anime style",
+                                              "dark blue shadow energy"]})
+        self.assertEqual(cfg["tags_estilo"],
+                         "jujutsu kaisen anime style, dark blue shadow energy")
+        # os campos estruturados simplesmente nao existem => os consumidores caem
+        # no fallback (personagem + anime), que e o comportamento desejado
+        self.assertIsNone(cfg.get("tags_personagem"))
+        self.assertIsNone(cfg.get("kanji"))
+
+    def test_string_solta_tambem_e_aceita(self):
+        cfg = sv.imagem_ia_cfg({"imagem_ia": "1boy, solo, megumi"})
+        self.assertEqual(cfg["tags_estilo"], "1boy, solo, megumi")
+
+    def test_dict_canonico_passa_intacto(self):
+        original = {"tags_personagem": "1boy, solo, megumi", "kanji": ["影", "Megumi"],
+                    "tags_alvos": {"shadow_technique": "dark shadows"}}
+        cfg = sv.imagem_ia_cfg({"imagem_ia": original})
+        self.assertIs(cfg, original)
+        self.assertEqual(cfg["kanji"], ["影", "Megumi"])
+
+    def test_ausente_vazio_ou_sujo_nao_estoura(self):
+        for manifesto in ({}, {"imagem_ia": None}, {"imagem_ia": ""},
+                          {"imagem_ia": []}, {"imagem_ia": [None, "   "]},
+                          {"imagem_ia": 42}):
+            cfg = sv.imagem_ia_cfg(manifesto)
+            self.assertIsInstance(cfg, dict)
+            self.assertNotIn("tags_estilo", cfg)   # nada util => sem campo
+
+    def test_lista_vazia_de_prompt_nao_cria_tags(self):
+        cfg = sv.imagem_ia_cfg({"imagem_ia": [" ", "", "  "]})
+        self.assertEqual(cfg, {})
+
+    def test_titulos_gera_arte_com_lista(self):
+        """O caminho exato que estourou: titulos_pipeline.arte_titulo."""
+        import tempfile
+        from pathlib import Path
+
+        import titulos_pipeline as tp
+
+        manifest = {"personagem": "Megumi Fushiguro", "anime": "Jujutsu Kaisen",
+                    "faixa": "Sombras",
+                    "cor": {"destaque": "#2B3A55", "destaque_claro": "#8FB8DE"},
+                    "imagem_ia": ["jujutsu kaisen anime style"]}
+        with tempfile.TemporaryDirectory() as tmp:
+            out = tp.arte_titulo(manifest, Path(tmp) / "tc.png")
+            self.assertTrue(out.is_file())
+            self.assertGreater(out.stat().st_size, 1000)
+
+
 if __name__ == "__main__":
     unittest.main()

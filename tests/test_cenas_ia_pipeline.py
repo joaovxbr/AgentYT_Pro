@@ -195,5 +195,49 @@ class ContratoTests(unittest.TestCase):
                     cia.executar("p")
 
 
+class SemanticsShapeTests(unittest.TestCase):
+    """Regressao do incidente 2026-10-09: `scene_semantics` como lista de ids.
+
+    `_fraqueza` lia `required_score` com `.get()` direto e estourava quando o
+    manifesto usava a forma curta, derrubando `cenas-ia` (a etapa seguinte a
+    `cenas-auto`, que tinha o mesmo bug).
+    """
+
+    def _seg(self, targets=None, scores=None, score=1.0):
+        return {"scene_match": {"score": score,
+                                "semantic_targets": targets or [],
+                                "semantic_target_scores": scores or {}}}
+
+    def test_forma_lista_nao_estoura(self):
+        manifest = {"scene_semantics": ["megumi_fushiguro", "shikigami"]}
+        score, falhas = cia._fraqueza(self._seg(score=0.4), manifest)
+        self.assertEqual(score, 0.4)
+        self.assertEqual(falhas, [])
+
+    def test_forma_lista_usa_o_default_de_required_score(self):
+        """Sem `required_score` explicito a lista cai no default 0.16, nao em 0."""
+        manifest = {"scene_semantics": ["megumi_fushiguro"]}
+        alvo = {"id": "shadow_technique", "required": True}
+        # 0.10 < 0.16 => reprovado
+        _, falhas = cia._fraqueza(self._seg([alvo], {"shadow_technique": 0.10}), manifest)
+        self.assertEqual([f["id"] for f in falhas], ["shadow_technique"])
+        # 0.20 >= 0.16 => aprovado
+        _, falhas = cia._fraqueza(self._seg([alvo], {"shadow_technique": 0.20}), manifest)
+        self.assertEqual(falhas, [])
+
+    def test_forma_canonica_ainda_manda_no_limiar(self):
+        manifest = {"scene_semantics": {"required_score": 0.5,
+                                        "labels": [{"id": "x", "prompt": "x"}]}}
+        alvo = {"id": "shadow_technique", "required": True}
+        _, falhas = cia._fraqueza(self._seg([alvo], {"shadow_technique": 0.4}), manifest)
+        self.assertEqual([f["id"] for f in falhas], ["shadow_technique"])
+
+    def test_alvo_entity_nunca_justifica_ia(self):
+        manifest = {"scene_semantics": ["megumi_fushiguro"]}
+        alvo = {"id": "entity:gojo", "required": True}
+        _, falhas = cia._fraqueza(self._seg([alvo], {"entity:gojo": 0.0}), manifest)
+        self.assertEqual(falhas, [])
+
+
 if __name__ == "__main__":
     unittest.main()

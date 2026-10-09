@@ -32,6 +32,8 @@ import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
+
+from semantic_vision import imagem_ia_cfg
 from typing import Any, Dict, List, Optional, Tuple
 
 from PIL import Image, ImageOps, ImageStat
@@ -197,7 +199,7 @@ def _anime_base(anime: str) -> str:
 
 
 def tags_personagem(manifesto: Dict[str, Any]) -> str:
-    bloco = manifesto.get("imagem_ia") or {}
+    bloco = imagem_ia_cfg(manifesto)
     if bloco.get("tags_personagem"):
         return str(bloco["tags_personagem"]).strip()
     partes = [p for p in (str(manifesto.get("personagem", "")).lower().strip(),
@@ -209,7 +211,7 @@ def montar_prompt(manifesto: Dict[str, Any], tipo: str, cfg: Dict[str, Any],
                   cena: Optional[str] = None) -> Tuple[str, str]:
     if tipo not in TIPOS:
         raise ValueError(f"tipo invalido: {tipo} (use {', '.join(TIPOS)})")
-    bloco = manifesto.get("imagem_ia") or {}
+    bloco = imagem_ia_cfg(manifesto)
     cores = manifesto.get("cor") or {}
     tons = [c for c in (nome_cor(cores.get("destaque", "")),
                         nome_cor(cores.get("destaque_claro", ""))) if c]
@@ -387,7 +389,7 @@ def gerar(projeto_dir: Path, tipo: str = "capa", cena: Optional[str] = None,
 
 def intencao_clip(manifesto: Dict[str, Any], tipo: str, cena: Optional[str]) -> str:
     """Frase natural para o critico CLIP (nao vai para o SDXL)."""
-    bloco = manifesto.get("imagem_ia") or {}
+    bloco = imagem_ia_cfg(manifesto)
     anime = _anime_base(str(manifesto.get("anime", "")))
     if tipo == "fundo":
         return f"anime background scenery from {anime}, {cena or bloco.get('tags_cenario', '')}".strip(", ")
@@ -398,7 +400,7 @@ def intencao_clip(manifesto: Dict[str, Any], tipo: str, cena: Optional[str]) -> 
 def identidade_clip(manifesto: Dict[str, Any], tipo: str) -> Optional[str]:
     if tipo == "fundo":
         return None
-    bloco = manifesto.get("imagem_ia") or {}
+    bloco = imagem_ia_cfg(manifesto)
     if bloco.get("clip_identidade"):
         return str(bloco["clip_identidade"])
     pers = manifesto.get("personagem", "")
