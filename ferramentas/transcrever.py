@@ -403,6 +403,62 @@ def trecho_explicado(novos: list[dict], esperados: list[str]) -> tuple[float, fl
     return (float(casados[0]["start"]) - 0.05, float(casados[-1]["end"]) + 0.05)
 
 
+def linhas_fracas(dados: dict, linhas: list[str], *, min_cobertura: float = 0.45,
+                  min_palavras: int = 3, max_palavras: int = 14,
+                  folga: float = 0.6) -> list[dict]:
+    """Linhas da letra que o ASR CONDENSOU: poucas palavras casadas, mas nao zero.
+
+    Lacuna de energia (`lacunas_vocais`) so pega trecho SEM nenhuma palavra. Existe um
+    caso diferente: o Whisper ouve 2 das 7 palavras de uma linha e comprime o resto —
+    a voz tem transcricao, entao nao ha lacuna, e a linha passa batida.
+
+    Caso real (Megumi 09/10/2026): "Cada shikigami meu sabe onde atacar" saiu como
+    "shikigami ... atacar" (2/6 = 33%). Nenhuma lacuna de voz. O porteiro reprovou e a
+    passada guiada nunca rodou, porque ela so olha lacunas.
+
+    Devolve [{indice, texto, inicio, fim, cobertura, casadas, palavras, esperados}] para
+    cada linha com cobertura em (0, min_cobertura). Linha com cobertura 0 e tratada
+    pelas lacunas (nao aqui): zero casadas significa que a linha inteira ficou de fora.
+
+    `esperados` e a LINHA INTEIRA (todos os tokens), nao so os que faltaram: a passada
+    retranscreve a frase completa, e o aceite exige que a linha inteira case. Filtrar so
+    os buracos embaralha o alinhamento (casou 'shikigami'+'atacar', sobrou 'Cada meu sabe
+    onde' e 'atacar' sumiu da lista — visto no Megumi).
+    """
+    import sincronizar_letra as sl
+    ws = sorted((w for w in dados.get("words") or [] if palavra_confiavel(w)),
+                key=lambda w: float(w["start"]))
+    if not ws or not linhas:
+        return []
+    fracas = []
+    # alinhamento monotono letra x ASR: cada token da letra acha (ou nao) sua palavra
+    mapa = sl._alinhar_tokens_monotono(tokens_da_letra(linhas), ws)
+    k = 0
+    for indice, texto in enumerate(linhas):
+        toks = sl._tokens_linha(texto)
+        n = len(toks)
+        janela = mapa[k:k + n]
+        k += n
+        casadas = [h for h in janela if h and h[1] >= 0.6]
+        if n < min_palavras or n > max_palavras or not casadas:
+            continue
+        cobertura = len(casadas) / n
+        if cobertura >= min_cobertura:
+            continue
+        matched = [ws[h[0]] for h in casadas]
+        inicio = float(matched[0]["start"])
+        fim = float(matched[-1]["end"])
+        fracas.append({
+            "indice": indice, "texto": texto,
+            "inicio": round(max(0.0, inicio - folga), 3),
+            "fim": round(fim + folga, 3),
+            "cobertura": round(cobertura, 3),
+            "casadas": len(casadas), "palavras": n,
+            "esperados": [t for t in toks if t],
+        })
+    return fracas
+
+
 def passada_guiada(audio: Path, dados: dict, energia: list, linhas: list[str], *, modelo="large-v3",
                    idioma="pt", model=None, margem=1.0) -> list[dict]:
     """3a passada: retranscreve cada lacuna que ainda tem letra pendente, com SO as frases
@@ -451,6 +507,69 @@ def passada_guiada(audio: Path, dados: dict, energia: list, linhas: list[str], *
                 s for s in extra["segments"] if s0 <= s["start"] <= s1], key=lambda s: s["start"])
             dados["passada_guiada"][-1]["trecho_trocado"] = [round(s0, 2), round(s1, 2)]
     return classificar_lacunas(lacunas_vocais(dados["words"], energia), dados["words"], tokens)[0]
+
+
+def passada_por_linha_fraca(audio: Path, dados: dict, linhas: list[str], *, modelo="large-v3",
+                            idioma="pt", model=None) -> list[dict]:
+    """Retranscreve cada LINHA CONDENSADA pelo ASR (ver `linhas_fracas`).
+
+    Complementa `passada_guiada`: la o gatilho e "voz sem NENHUMA palavra"; aqui e
+    "linha com POUCAS palavras". Reaproveita o mesmo aceite (`aceitar_passada_guiada`)
+    e a mesma troca cirurgica (`trecho_explicado`), entao nao afrouxa nada: se o novo
+    resultado nao casar com a linha nem cair sobre voz, ele e descartado.
+
+    Regressao Megumi (09/10/2026): sem isto, `auditar-letra` reprovava uma linha que
+    ESTA cantada (Mureka e Whisper concordam nela), so porque o ASR comprimiu 5 palavras.
+    """
+    tokens = tokens_da_letra(linhas)
+    if not tokens:
+        return []
+    model = model or carregar_modelo(modelo)
+    # energia so para o aceite (as palavras novas tem de cair sobre voz)
+    energia = energia_vocal(audio) if not dados.get("_energia_linha") else dados["_energia_linha"]
+    if not energia:
+        return []
+    import numpy as np
+    limiar = float(np.percentile([d for _, d in energia], 90) - 12.0)
+    for lf in linhas_fracas(dados, linhas):
+        a, b = lf["inicio"], lf["fim"]
+        esperados = lf["esperados"] or [t for t in tokens_da_letra([lf["texto"]])]
+        if len(esperados) < 3:
+            continue
+        aceito, novos, extra, prompt_usado = False, [], None, None
+        # sem prompt PRIMEIRO: com o prompt, o Whisper as vezes "copia" a frase sobre o
+        # audio e casa menos do que ouviria sozinho (visto no Megumi: sem prompt casou
+        # sabe/onde/atacar; com prompt so shikigami/meu). Guardar a tentativa ACEITA,
+        # nunca a ultima tentativa — a de baixo pode falhar e apagar a de cima.
+        for prompt in (None, " ".join(esperados)):
+            extra = transcrever_chunked(audio, modelo=modelo, idioma=idioma, prompt=prompt,
+                                        chunk_seconds=max(8.0, b - a + 0.1), overlap=0.0,
+                                        inicio=a, fim=b, model=model)
+            limpar_alucinacoes(extra)
+            candidatos = [w for w in extra["words"] if a <= float(w["start"]) <= b]
+            if aceitar_passada_guiada(candidatos, esperados, energia, limiar):
+                aceito, novos, prompt_usado = True, candidatos, prompt
+                break
+        dados.setdefault("passada_linha_fraca", []).append(
+            {"indice": lf["indice"], "texto": lf["texto"], "janela": [a, b],
+             "cobertura_antes": lf["cobertura"], "esperados": len(esperados),
+             "palavras": len(novos), "aceita": aceito, "com_prompt": bool(prompt_usado)})
+        if not aceito:
+            dados["passada_linha_fraca"][-1]["palavras"] = len(
+                [w for w in (extra or {}).get("words", []) if a <= float(w["start"]) <= b])
+            continue
+        s0, s1 = trecho_explicado(novos, esperados)
+        if s1 <= s0:
+            continue
+        velhos = [w for w in dados["words"] if not (s0 <= float(w["start"]) <= s1)]
+        usados = [w for w in novos if s0 <= float(w["start"]) <= s1]
+        dados["words"] = sorted(velhos + usados, key=lambda w: w["start"])
+        dados["segments"] = sorted(
+            [s for s in dados.get("segments", []) if not (s0 <= s["start"] <= s1)]
+            + [s for s in extra["segments"] if s0 <= s["start"] <= s1],
+            key=lambda s: s["start"])
+        dados["passada_linha_fraca"][-1]["trecho_trocado"] = [round(s0, 2), round(s1, 2)]
+    return dados.get("passada_linha_fraca", [])
 
 
 def _melhor_dispositivo() -> tuple[str, str]:

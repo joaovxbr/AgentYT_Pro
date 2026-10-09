@@ -1076,6 +1076,16 @@ def cmd_transcrever(slug: str, modelo: str = None) -> int:
                     print(f"  3a passada lacuna {x['inicio']}-{x['fim']}s (janela {x['janela'][0]}-{x['janela'][1]}s): "
                           f"{x['palavras']} palavras ({x['pendentes']} tokens pendentes) -> "
                           f"{'ACEITA' if x['aceita'] else 'rejeitada'}{' (com prompt)' if x['com_prompt'] else ''}")
+                # 4a passada: linha CONDENSADA (ASR ouviu poucas das palavras). Diferente da
+                # 3a, o gatilho nao e lacuna de voz: a voz tem transcricao, mas incompleta.
+                dados["_energia_linha"] = energia
+                tr_mod.passada_por_linha_fraca(fonte, dados, linhas_letra, modelo=mdl, model=modelo_w)
+                dados.pop("_energia_linha", None)
+                for x in dados.get("passada_linha_fraca", []):
+                    print(f"  4a passada linha {x['indice']} ({x['cobertura_antes']*100:.0f}% -> ) "
+                          f"janela {x['janela'][0]}-{x['janela'][1]}s: {x['palavras']} palavras "
+                          f"({x['esperados']} esperados) -> "
+                          f"{'ACEITA' if x['aceita'] else 'rejeitada'}{' (com prompt)' if x['com_prompt'] else ''}")
     except Exception as exc:  # modelo nao baixado localmente etc.
         print(f"  aviso: transcricao em blocos falhou ({exc}); usando passada unica")
         dados = tr_mod.transcrever(fonte, destino, modelo=mdl, initial_prompt=prompt)

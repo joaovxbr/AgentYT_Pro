@@ -14,6 +14,26 @@
     "secondary": "#172B66", "accent": "#EAFBFF", "danger": "#7AE6FF",
     "preferred_presets": ["void_glitch", "neon_royal", "cinematic_gold"]
   },
+  "megumi": {
+    "aliases": [
+      "megumi",
+      "fushiguro",
+      "megumi fushiguro",
+      "shadows",
+      "dez sombras",
+      "ten shadows"
+    ],
+    "primary": "#2B3A55",
+    "secondary": "#8FB8DE",
+    "accent": "#F2F4F7",
+    "danger": "#B03A48",
+    "preferred_presets": [
+      "void_glitch",
+      "neon_outline_fill",
+      "manga_brutal_pro",
+      "cinematic_gold"
+    ]
+  },
   "akaza": {
     "aliases": ["akaza"], "primary": "#F04BC9", "secondary": "#3D72FF",
     "accent": "#FFFFFF", "danger": "#FF4343",
