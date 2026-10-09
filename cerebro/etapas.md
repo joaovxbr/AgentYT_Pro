@@ -83,15 +83,15 @@ Cena de tela verde (chroma key) vira cena composta: fundo do projeto + personage
 
 Gera cena nova no ComfyUI so onde a cena real ficou fraca.
 
-- **Lê:** `timeline.json`, `projeto.json`, `assets/design/cenas_ia_map.json`
-- **Grava:** `timeline.json`, `artes_ia/*`, `clips_raw/vx_cenas_ia/*.mp4`, `qa/vx_cenas_ia/plano.json`, `qa/vx_cenas_ia/state.json`
-- **Nota:** ComfyUI offline = pula com aviso (cenas_ia.strict=true torna obrigatorio).
+- **Lê:** `timeline.json`, `projeto.json`, `assets/design/cenas_ia_map.json`, `artes_ia/fundo_*.png`
+- **Grava:** `timeline.json`, `artes_ia/cena_*.png`, `artes_ia/escolhas.json`, `clips_raw/vx_cenas_ia/*.mp4`, `qa/vx_cenas_ia/plano.json`, `qa/vx_cenas_ia/state.json`
+- **Nota:** ComfyUI offline = pula com aviso (cenas_ia.strict=true torna obrigatorio). Grava `artes_ia/cena_*.png` (e nao `artes_ia/*`): as `fundo_*.png` sao assets do projeto, lidas pela chroma-auto/titulos -- declarar o glob amplo criava aresta falsa (cenas-ia -> chroma-auto) e um ciclo no grafo (vx/dag.py).
 
 ### `titulos` (bloqueia, sempre refeita)
 
 Title Card (abertura) e End Card (encerramento).
 
-- **Lê:** `timeline.json`, `projeto.json`, `artes_ia/*`
+- **Lê:** `timeline.json`, `projeto.json`, `artes_ia/fundo_*.png`
 - **Grava:** `timeline.json`, `clips_raw/vx_titulos/*`, `qa/vx_titulos/state.json`
 
 ### `manga-auto` (bloqueia, sempre refeita)

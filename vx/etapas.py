@@ -81,13 +81,18 @@ PRODUCAO = (
           notas="Pedido do usuario (Douma): nunca mostrar a tela verde crua.",
           cacheavel=False),
     Etapa("cenas-ia", "Gera cena nova no ComfyUI so onde a cena real ficou fraca.",
-          le=("timeline.json", "projeto.json", "assets/design/cenas_ia_map.json"),
-          escreve=("timeline.json", "artes_ia/*", "clips_raw/vx_cenas_ia/*.mp4",
+          le=("timeline.json", "projeto.json", "assets/design/cenas_ia_map.json",
+              "artes_ia/fundo_*.png"),
+          escreve=("timeline.json", "artes_ia/cena_*.png", "artes_ia/escolhas.json",
+                   "clips_raw/vx_cenas_ia/*.mp4",
                    "qa/vx_cenas_ia/plano.json", "qa/vx_cenas_ia/state.json"),
-          notas="ComfyUI offline = pula com aviso (cenas_ia.strict=true torna obrigatorio).",
+          notas="ComfyUI offline = pula com aviso (cenas_ia.strict=true torna obrigatorio). "
+                "Grava `artes_ia/cena_*.png` (e nao `artes_ia/*`): as `fundo_*.png` sao "
+                "assets do projeto, lidas pela chroma-auto/titulos -- declarar o glob amplo "
+                "criava aresta falsa (cenas-ia -> chroma-auto) e um ciclo no grafo (vx/dag.py).",
           cacheavel=False),
     Etapa("titulos", "Title Card (abertura) e End Card (encerramento).",
-          le=("timeline.json", "projeto.json", "artes_ia/*"),
+          le=("timeline.json", "projeto.json", "artes_ia/fundo_*.png"),
           escreve=("timeline.json", "clips_raw/vx_titulos/*", "qa/vx_titulos/state.json"),
           cacheavel=False),
     Etapa("manga-auto", "Insere 1-2 takes raros de manga em climax fortes.",
