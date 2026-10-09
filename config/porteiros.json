@@ -22,7 +22,9 @@
     "zoom_max": 1.18,
     "ocr_conf_min": 0.6,
     "ocr_marca_min_s": 6.0,
-    "ocr_marca_todo": 0.5
+    "ocr_marca_todo": 0.5,
+    "texto_area_min": 0.0015,
+    "texto_altura_min_px": 11
   },
   "auditar_letra": {
     "min_cobertura_linha": 0.45,

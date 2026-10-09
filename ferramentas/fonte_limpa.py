@@ -64,6 +64,13 @@ PADRAO = {
     "ocr_conf_min": 0.6,
     "ocr_marca_min_s": 6.0,          # mesmo texto no mesmo lugar por >= 6 s = marca, nao legenda
     "ocr_marca_todo": 0.5,           # marca em >= 50 % do clipe: limpeza do clipe todo (recorte)
+    # Porteiro de texto do render (auditar_texto_render): caixa minima para contar como
+    # texto de terceiros. Screentone de quadrinho (manga take do graficos-auto) vira
+    # texto curto minusculo no OCR; medido no megumi_shadows, a menor caixa real tem
+    # area 0.00367 e as de screentone 0.0005 (25x8 px em 960x540). Limiar fica no meio,
+    # com folga de 4x para os dois lados. Ver incidente 2026-10-09-screentone-ocr.
+    "texto_area_min": 0.0015,
+    "texto_altura_min_px": 11,       # linha de texto real tem >= 11 px de altura em 960x540
 }
 
 
@@ -830,7 +837,14 @@ def _norm(s: str) -> str:
 
 
 def corpus_permitido(d: Path) -> str:
-    """Todo texto que o NOSSO video escreve: letra, titulo, nome, marca, handle, CTA."""
+    """Todo texto que o NOSSO video escreve: letra, titulo, nome, marca, handle, CTA.
+
+    As partes sao normalizadas individualmente (``_norm``) e unidas por ``"|"``.
+    O separador TEM que sobreviver a normalizacao: sem isso os campos viram um
+    blob unico e qualquer texto composto por dois campos (ex.: a cartela de
+    abertura ``MEGUMI FUSHIGURO • JUJUTSU KAISEN``) nunca casa — era a causa do
+    QA de texto reprovar o proprio Title Card (incidente 2026-10-09).
+    """
     d = Path(d)
     partes = []
     for nome in ("LETRA.txt", "LETRA_LINHAS.txt"):
@@ -854,41 +868,87 @@ def corpus_permitido(d: Path) -> str:
     coletar(man)
     # textos fixos que os nossos cards escrevem (titulos_pipeline: abertura e end card)
     partes += ["VX RAPS APRESENTA", "@VXRaps", "INSCREVA-SE NO CANAL"]
+    # Cartelas COMPOSTAS: o card de abertura escreve personagem + anime na mesma
+    # linha. Nenhum campo isolado cobre essa string, entao ela entra inteira.
+    pers = str(man.get("personagem", "")).strip()
+    anime = str(man.get("anime", "")).split("(")[0].strip()
+    faixa = str(man.get("faixa", "")).strip()
+    if pers and anime:
+        partes.append(f"{pers} {anime}")
+        partes.append(f"{pers} \u2022 {anime}")
+    # assinatura do card final (titulos_pipeline: marca + handle + CTA)
+    partes += ["VX RAPS @VXRaps", "VX RAPS @VXRaps INSCREVA-SE NO CANAL"]
+    if faixa and pers:
+        partes.append(f"{faixa} {pers}")
     return "|".join(_norm(p) for p in partes)
 
 
 def texto_e_nosso(texto: str, corpus: str) -> bool:
+    """O texto lido pelo OCR e texto que o NOSSO video escreve?
+
+    O corpus e uma lista de campos normalizados unida por ``|``. O casamento
+    deve respeitar essa fronteira: um trecho que ATRAVESSA o ``|`` pertence a
+    dois campos diferentes e nao e um texto nosso de verdade.
+    """
     from difflib import SequenceMatcher
     n = _norm(texto)
     if len(n) < 5:
         return True                                  # fragmento de efeito (eco/glitch)
-    if n in corpus:
+    campos = [c for c in corpus.split("|") if c]
+    # casamento exato dentro de UM campo (nunca no blob concatenado)
+    if any(n in c for c in campos):
         return True
-    m = SequenceMatcher(None, n, corpus, autojunk=False).find_longest_match(0, len(n), 0, len(corpus))
-    if m.size < 3:
-        return False
-    # alinha pelo maior trecho comum e compara a janela do mesmo tamanho (OCR troca letra:
-    # 'GLICINIA' -> 'CLICINIA', junta palavras, perde acento)
-    ini = max(0, m.b - m.a)
-    janela = corpus[ini:ini + len(n) + 2]
-    return SequenceMatcher(None, n, janela, autojunk=False).ratio() >= 0.75
+    # janela deslizante DENTRO de um campo so: alinha pelo maior trecho comum
+    # e compara a mesma janela (OCR troca letra, junta palavras, perde acento)
+    for c in campos:
+        if len(c) < 3:
+            continue
+        m = SequenceMatcher(None, n, c, autojunk=False).find_longest_match(0, len(n), 0, len(c))
+        if m.size < 3:
+            continue
+        ini = max(0, m.b - m.a)
+        janela = c[ini:ini + len(n) + 2]
+        if SequenceMatcher(None, n, janela, autojunk=False).ratio() >= 0.75:
+            return True
+    return False
 
 
-def intrusos_render(amostras: list, corpus: str) -> list[dict]:
+def intrusos_render(amostras: list, corpus: str, c: dict | None = None) -> list[dict]:
     """Texto de terceiros no render. Marca conhecida reprova na hora; texto estranho precisa
-    aparecer em 2 amostras em ate 1,5 s (1 leitura solta = ruido do OCR)."""
+    aparecer em 2 amostras em ate 1,5 s (1 leitura solta = ruido do OCR).
+
+    Caixa minuscula NAO conta como texto estranho: screentone de quadrinho (manga take)
+    vira um texto curto de poucos pixels e o OCR le lixo ('888888'). A checagem de marca
+    NAO passa por esse filtro: logo de canal pequeno continua reprovando pelo nome.
+    """
+    c = c or cfg()
+    area_min = float(c.get("texto_area_min", 0.0) or 0.0)
+    alt_min = float(c.get("texto_altura_min_px", 0) or 0.0)
     estranhos = []
     for t, caixas in amostras:
         for b in caixas:
-            if any(m in _norm(b["texto"]) for m in MARCAS_TERCEIROS):
+            marca = any(m in _norm(b["texto"]) for m in MARCAS_TERCEIROS)
+            if marca:
                 estranhos.append({"t": t, "texto": b["texto"], "marca": True})
-            elif not texto_e_nosso(b["texto"], corpus):
+                continue
+            if _caixa_pequena(b, area_min, alt_min):
+                continue                                  # screentone/ruido, nao e texto
+            if not texto_e_nosso(b["texto"], corpus):
                 estranhos.append({"t": t, "texto": b["texto"], "marca": False})
     out = []
     for e in estranhos:
         if e["marca"] or any(o is not e and abs(o["t"] - e["t"]) <= 1.5 for o in estranhos):
             out.append(e)
     return out
+
+
+def _caixa_pequena(b: dict, area_min: float, alt_min_px: float) -> bool:
+    """Caixa pequena demais para ser texto de verdade (em pixels do grid do OCR)."""
+    if area_min > 0 and (b["w"] * b["h"]) < area_min:
+        return True
+    if alt_min_px > 0 and (b["h"] * OCR_H) < alt_min_px:
+        return True
+    return False
 
 
 def auditar_texto_render(video: Path, d: Path, fps: float = 2.0) -> dict:

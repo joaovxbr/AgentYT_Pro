@@ -1,7 +1,9 @@
 """Porteiro de fonte: marca d'agua/logo e legenda queimada (incidente Douma 30/09/2026)."""
 from __future__ import annotations
 
+import json
 import sys
+import tempfile
 import unittest
 import unittest.mock
 from pathlib import Path
@@ -458,6 +460,149 @@ class QuadrosTravadosTest(unittest.TestCase):
         src = inspect.getsource(fl.auditar_projeto)
         self.assertIn("__poslimpeza", src)
         self.assertNotIn('ocr_do_clipe(clip, float(c["ocr_fps_verificacao"]), None, c)', src)
+
+
+class CartelaCompostaTests(unittest.TestCase):
+    """Regressao do incidente 2026-10-09: o QA de texto reprovava o NOSSO Title Card.
+
+    A cartela de abertura escreve `MEGUMI FUSHIGURO • JUJUTSU KAISEN` na mesma
+    linha. Como o `corpus_permitido` une os campos ja normalizados com `"|"`, e
+    `_norm` apaga o `|`, o corpus virava um blob: `megumifushiguro` e
+    `jujutsukaisen` ficavam colados sem separador, e a string composta lida pelo
+    OCR nunca casava. O gate reprovava 12 amostras do proprio card.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _projeto(self, **extra):
+        man = {"personagem": "Megumi Fushiguro", "anime": "Jujutsu Kaisen",
+               "faixa": "Megumi Shadows", "titulo_linhas": ["MEGUMI", "SHADOWS"]}
+        man.update(extra)
+        (self.d / "projeto.json").write_text(
+            json.dumps(man, ensure_ascii=False), encoding="utf-8")
+        return fl.corpus_permitido(self.d)
+
+    def test_cartela_composta_e_nossa(self):
+        corpus = self._projeto()
+        for texto in ("MEGUMI FUSHIGURO JUJUTSU KAISEN",
+                      "MEGUMI FUSHIGUROJUJUTSU KAISEN",   # OCR come o bullet
+                      "VX RAPS APRESENTA",
+                      "MEGUMI SHADOWS",
+                      "VX RAPS @VXRaps"):
+            self.assertTrue(fl.texto_e_nosso(texto, corpus), texto)
+
+    def test_campos_isolados_continuam_nossos(self):
+        corpus = self._projeto()
+        for texto in ("MEGUMI FUSHIGURO", "JUJUTSU KAISEN", "MEGUMI SHADOWS"):
+            self.assertTrue(fl.texto_e_nosso(texto, corpus), texto)
+
+    def test_intruso_de_verdade_ainda_reprova(self):
+        """A correcao nao pode afrouxar o gate: marca de terceiros segue caindo."""
+        corpus = self._projeto()
+        for texto in ("ANIME FLV", "Canal do Joao", "ASSISTA AGORA EM HD",
+                      "naruto shippuden opening", "GLICINIA TV"):
+            self.assertFalse(fl.texto_e_nosso(texto, corpus), texto)
+
+    def test_separador_sobrevive_a_normalizacao(self):
+        corpus = self._projeto()
+        self.assertIn("|", corpus)
+        self.assertGreater(len([c for c in corpus.split("|") if c]), 3)
+
+    def test_nao_casa_atravessando_a_fronteira(self):
+        """Um trecho que junta dois campos DIFERENTES nao e texto nosso."""
+        corpus = "|".join(fl._norm(x) for x in ["Megumi Fushiguro", "Jujutsu Kaisen"])
+        # o composto entra no corpus via projeto.json, mas um cruzamento que nao
+        # existe em nenhum campo nao pode ser aceito por acidente
+        self.assertFalse(fl.texto_e_nosso("SHADOWSPIRIT BLAZING", corpus))
+
+    def test_texto_render_real_do_projeto(self):
+        """O caso exato: as 12 amostras reprovadas voltam a ser aprovadas."""
+        corpus = self._projeto()
+        amostras = [(t / 2.0, [_cx(.3, .1, .4, .06, t_)]) for t, t_ in enumerate(
+            ["MEGUMI FUSHIGUROJUJUTSU KAISEN"] * 8 + ["MEGUMI FUSHIGURO JUJUTSU KAISEN"] * 4, 1)]
+        self.assertEqual(fl.intrusos_render(amostras, corpus), [])
+
+
+class CorpusPermitidoTests(unittest.TestCase):
+    """O separador `|` e contrato: `texto_e_nosso` divide o corpus por ele."""
+
+    def test_corpus_sem_projeto_nao_estoura(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            corpus = fl.corpus_permitido(Path(tmp))
+        self.assertIsInstance(corpus, str)
+
+    def test_letra_entra_no_corpus(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            (d / "LETRA_LINHAS.txt").write_text("Sombras se abrem no chao\n",
+                                                encoding="utf-8")
+            corpus = fl.corpus_permitido(d)
+        self.assertTrue(fl.texto_e_nosso("SOMBRAS SE ABREM NO CHAO", corpus))
+
+
+class ScreentoneOcrTests(unittest.TestCase):
+    """Regressao do incidente 2026-10-09: screentone de quadrinho virava 'texto intruso'.
+
+    O manga take do `graficos-auto` (motion card com retícula de meio-tom) faz o OCR
+    ler um texto minusculo e repetido — '888888' — numa caixa de 25x8 px em 960x540
+    (area 0.0005), no canto inferior esquerdo. A menor caixa de texto REAL do mesmo
+    render tem area 0.00367 (112x17 px): ha um vao de 8x entre ruido e texto.
+
+    O filtro de tamanho NAO pode valer para marcas conhecidas: logo de canal pequeno
+    continua reprovando pelo NOME (Crunchyroll e afins).
+    """
+
+    CORPUS = "|".join(fl._norm(x) for x in ["Sombras se abrem no chao", "VX RAPS"])
+
+    def _sliver(self, texto="888888", w=0.026, h=0.015):
+        """Caixa do tamanho medido do screentone (25x8 px em 960x540)."""
+        return _cx(0.03, 0.95, w, h, texto)
+
+    def _real(self, texto, w=0.12, h=0.031):
+        """Caixa do tamanho medido do menor texto real (112x17 px)."""
+        return _cx(0.30, 0.87, w, h, texto)
+
+    def test_screentone_minusculo_nao_e_intruso(self):
+        am = [(143.0, [self._sliver()]), (143.5, [self._sliver()])]
+        self.assertEqual(fl.intrusos_render(am, self.CORPUS), [])
+
+    def test_screentone_repetido_tambem_nao_e_intruso(self):
+        """Antes, 3 leituras em 1 s passavam no criterio de '2 amostras' e reprovavam."""
+        am = [(143.0, [self._sliver()])] + [(143.0 + i * 0.5, [self._sliver()])
+                                            for i in range(1, 4)]
+        self.assertEqual(fl.intrusos_render(am, self.CORPUS), [])
+
+    def test_texto_real_grande_continua_reprovando(self):
+        """O filtro e de TAMANHO: texto estranho de tamanho normal segue caindo."""
+        am = [(12.0, [self._real("Constantly...")]),
+              (12.5, [self._real("Constantly...")])]
+        self.assertEqual(len(fl.intrusos_render(am, self.CORPUS)), 2)
+
+    def test_marca_pequena_ainda_reprova_pelo_nome(self):
+        """Logo de canal pequeno NAO pode escapar: a checagem de marca ignora o tamanho."""
+        am = [(9.0, [self._sliver("Crunchyroll", 0.02, 0.012)])]
+        out = fl.intrusos_render(am, self.CORPUS)
+        self.assertEqual(len(out), 1)
+        self.assertTrue(out[0]["marca"])
+
+    def test_limiar_e_mais_justo_que_o_vao_medido(self):
+        """O limiar tem folga para os dois lados (nao esta colado em nenhum extremo)."""
+        c = fl.PADRAO
+        area_min = float(c["texto_area_min"])
+        ruido = 0.026 * 0.015          # 25x8 px medido
+        real = 0.12 * 0.031            # 112x17 px medido
+        self.assertGreater(area_min, ruido * 2)      # folga > 2x sobre o ruido
+        self.assertLess(area_min, real / 2)          # folga > 2x sob o texto real
+
+    def test_altura_minima_discrimina(self):
+        """As caixas de screentone tinham 8 px; texto real, >= 17 px."""
+        self.assertTrue(fl._caixa_pequena({"w": 0.026, "h": 0.015}, 0.0015, 11))
+        self.assertFalse(fl._caixa_pequena({"w": 0.12, "h": 0.031}, 0.0015, 11))
 
 
 if __name__ == "__main__":
