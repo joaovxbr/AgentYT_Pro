@@ -57,7 +57,8 @@ class BootstrapTests(unittest.TestCase):
             self._novo(tmp)
             chamados = []
             with patch.object(pap, "RAIZ", Path(tmp)), \
-                    patch.object(pap, "executar_passo", lambda cmd, titulo, log=None: chamados.append(cmd[2])):
+                    patch.object(pap.vx_runner, "executar",
+                                 lambda etapa, args, **kw: chamados.append(etapa)):
                 pap.executar_bootstrap("novo", ["transcrever", "timeline"])
             self.assertEqual(chamados, ["transcrever", "timeline"])
 

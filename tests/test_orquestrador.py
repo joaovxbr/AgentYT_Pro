@@ -91,18 +91,18 @@ class EtapaInformativaTests(unittest.TestCase):
             (p / "entradas" / "transcricao.json").write_text("{}")
             chamadas = []
 
-            def fake(cmd, titulo, log=None):
-                chamadas.append(titulo)
-                if titulo == "auditar-ritmo":
-                    raise subprocess.CalledProcessError(1, cmd)
-                if titulo == "cenas-auto":
+            def fake(etapa, args, log_path=None, **kw):
+                chamadas.append(etapa)
+                if etapa == "auditar-ritmo":
+                    raise pipeline.vx_runner.ErroDeEtapa("exit 1", codigo=1, etapa=etapa)
+                if etapa == "cenas-auto":
                     raise RuntimeError("parar aqui")
 
             report = {"aprovado": True, "erros": [], "saida": str(p / "o.mp4")}
             with patch.object(pipeline, "preflight", return_value=report), \
                  patch.object(pipeline, "projeto", return_value=p), \
                  patch.object(rd, "video_args", return_value=[]), \
-                 patch.object(pipeline, "executar_passo", side_effect=fake):
+                 patch.object(pipeline.vx_runner, "executar", side_effect=fake):
                 with self.assertRaisesRegex(RuntimeError, "parar aqui"):
                     pipeline.executar_esteira_completa("demo")
             estado = json.loads(next((p / "qa" / "esteira").glob("*/execucao.json")).read_text(encoding="utf-8"))

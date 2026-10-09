@@ -155,7 +155,7 @@ class PipelineIsolationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp)
             report = {"aprovado": True, "erros": [], "saida": str(p / "out.mp4")}
-            with patch.object(pipeline, "preflight", return_value=report), patch.object(pipeline, "projeto", return_value=p), patch.object(rd, "video_args", return_value=[]), patch.object(pipeline, "executar_passo", side_effect=RuntimeError("falha simulada")):
+            with patch.object(pipeline, "preflight", return_value=report), patch.object(pipeline, "projeto", return_value=p), patch.object(rd, "video_args", return_value=[]), patch.object(pipeline.vx_runner, "executar", side_effect=RuntimeError("falha simulada")):
                 with self.assertRaisesRegex(RuntimeError, "falha simulada"):
                     pipeline.executar_esteira_completa("demo")
             self.assertFalse((p / ".esteira.lock").exists())

@@ -26,6 +26,7 @@ from vx import composicao as vx_composicao  # noqa: E402
 from vx import projeto as vx_projeto  # noqa: E402
 from vx import metrics as vx_metrics  # noqa: E402
 from vx import checkpoint as vx_checkpoint  # noqa: E402
+from vx import runner as vx_runner  # noqa: E402
 ambiente.garantir_path()
 
 def quantizar_cortes(tempos, fps=30):
@@ -81,11 +82,13 @@ def pendencias_bootstrap(slug):
     return pend
 
 
-def executar_bootstrap(slug, pend=None):
+def executar_bootstrap(slug, pend=None, isolado=False):
     """Roda, na ordem oficial, so as etapas de bootstrap que faltam."""
     p = projeto(slug)
     pend = pendencias_bootstrap(slug) if pend is None else pend
     audio = vx_projeto.audio(p)
+    # `args` ja comeca pelo subcomando: mesma forma que o registro usa em
+    # `vx/etapas.py -> args` (nome da etapa primeiro, extras depois).
     comandos = {
         "stems": ["stems", str(audio), "--saida", str(p / "entradas" / "stems")],
         "transcrever": ["transcrever", slug, "--modelo", "large-v3"],
@@ -94,8 +97,8 @@ def executar_bootstrap(slug, pend=None):
     }
     for nome in ("stems", "transcrever", "sincronizar", "timeline"):
         if nome in pend:
-            executar_passo([sys.executable, str(FERRAMENTAS / "estudio.py"), *comandos[nome]],
-                           f"bootstrap: {nome}")
+            print(f"[ESTEIRA] bootstrap: {nome}", flush=True)
+            vx_runner.executar(nome, comandos[nome], isolado=isolado)
     return pend
 
 
@@ -168,7 +171,8 @@ def executar_passo(cmd, titulo, log_path=None):
             subprocess.run(cmd, cwd=RAIZ, env=env, stdout=log,
                            stderr=subprocess.STDOUT, check=True)
 
-def executar_esteira_completa(slug, planejar=False, clean_rebuild=False, resume=None):
+def executar_esteira_completa(slug, planejar=False, clean_rebuild=False, resume=None,
+                              isolado=False):
     if planejar:
         check = preflight(slug, permitir_bootstrap=not clean_rebuild)
         pend = pendencias_bootstrap(slug) if not clean_rebuild else []
@@ -206,7 +210,8 @@ def executar_esteira_completa(slug, planejar=False, clean_rebuild=False, resume=
         print(f"[ESTEIRA] lock orfao removido (pid {lock_info['lock_orfao_removido'].get('pid')} "
               "nao existe mais)", flush=True)
     try:
-        return _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info, resume=resume)
+        return _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info, resume=resume,
+                                  isolado=isolado)
     finally:
         vx_lock.liberar(lock, run_id)
 
@@ -253,7 +258,8 @@ def _planejar_resume(slug, resume, clean_rebuild) -> dict:
             "motivo": "checkpoint valido para as etapas listadas em a_pular"}
 
 
-def _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info, resume=None):
+def _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info, resume=None,
+                       isolado=False):
     clean_report = None
     if clean_rebuild:
         from clean_rebuild import preparar
@@ -262,14 +268,10 @@ def _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info, resume=None):
         print(f"[ESTEIRA] backup clean: {clean_report['backup']}", flush=True)
         # Reconstroi tambem a sincronizacao oficial: timeline-base nunca depende
         # de um arquivo velho que por acaso existia no projeto anterior.
-        executar_passo(
-            [sys.executable, str(FERRAMENTAS / "estudio.py"), "sincronizar", slug],
-            "sincronizacao limpa",
-        )
-        executar_passo(
-            [sys.executable, str(FERRAMENTAS / "estudio.py"), "timeline", slug],
-            "timeline-base limpa",
-        )
+        print("[ESTEIRA] sincronizacao limpa", flush=True)
+        vx_runner.executar("sincronizar", ["sincronizar", slug], isolado=isolado)
+        print("[ESTEIRA] timeline-base limpa", flush=True)
+        vx_runner.executar("timeline", ["timeline", slug], isolado=isolado)
     else:
         pend = pendencias_bootstrap(slug)
         if pend:
@@ -277,15 +279,15 @@ def _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info, resume=None):
             parcial = preflight(slug, permitir_bootstrap=True)
             if not parcial["aprovado"]:
                 raise ValueError("\n".join(parcial["erros"]))
-            executar_bootstrap(slug, pend)
+            executar_bootstrap(slug, pend, isolado=isolado)
 
     # Composicao: a timeline e remontada da base limpa em toda execucao, entao
     # mudar letra/parametro nunca deixa takes antigos "presos" (vx/composicao.py).
     composicao = {"modo": "clean_rebuild"} if clean_rebuild else None
     if not clean_rebuild:
         if vx_composicao.base_desatualizada(p):
-            executar_passo([sys.executable, str(FERRAMENTAS / "estudio.py"), "timeline", slug],
-                           "timeline-base (letra sincronizada mudou)")
+            print("[ESTEIRA] timeline-base (letra sincronizada mudou)", flush=True)
+            vx_runner.executar("timeline", ["timeline", slug], isolado=isolado)
         composicao = vx_composicao.recompor(p, p / "qa" / "esteira" / run_id / "recomposicao")
         print(f"[ESTEIRA] composicao: {composicao['modo']}"
               + (f" (base adotada de {composicao['base_adotada']})" if composicao.get("base_adotada") else ""),
@@ -365,17 +367,24 @@ def _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info, resume=None):
             salvar_json(report_path, report)
             metricas.etapa_inicio(name)
             t0 = time.perf_counter()
+            log_etapa = qa / f"{len(report['etapas']):02}_{name}.log"
             try:
-                executar_passo([sys.executable, str(FERRAMENTAS / "estudio.py"), *args],
-                              name, qa / f"{len(report['etapas']):02}_{name}.log")
-            except subprocess.CalledProcessError as exc:
+                # In-process (vx/runner.py): a etapa roda neste processo em vez de um
+                # subprocess novo. Ganha-se o traceback real (metrics registra o tipo
+                # da excecao, nao "exit 1") e o custo de import deixa de ser pago por
+                # etapa. `--isolado` volta ao subprocess quando a etapa exigir.
+                vx_runner.executar(name, args, log_path=log_etapa, slug=slug,
+                                   isolado=isolado)
+            except vx_runner.ErroDeEtapa as exc:
+                # Era o unico erro tratado de etapa: reprovacao da etapa (exit != 0
+                # ou SystemExit do estudio.py). Aqui se decide reprovar ou so avisar.
                 duracao = time.perf_counter() - t0
                 if bloqueante:
                     item["status"] = "falhou"
                     metricas.etapa_fim(name, status=vx_metrics.STATUS_FALHOU,
                                        duracao_s=duracao,
-                                       erro=f"exit {exc.returncode}",
-                                       origem_erro="subprocess.CalledProcessError")
+                                       erro=f"exit {exc.codigo}",
+                                       origem_erro="vx_runner.ErroDeEtapa")
                     metricas.gravar(metricas_path)
                     report["metricas"] = metricas.resumo()
                     salvar_json(report_path, report)
@@ -384,8 +393,8 @@ def _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info, resume=None):
                 item["status"] = "aviso"
                 metricas.etapa_fim(name, status=vx_metrics.STATUS_AVISO,
                                    duracao_s=duracao,
-                                   erro=f"exit {exc.returncode}",
-                                   origem_erro="subprocess.CalledProcessError")
+                                   erro=f"exit {exc.codigo}",
+                                   origem_erro="vx_runner.ErroDeEtapa")
                 metricas.gravar(metricas_path)
                 report["metricas"] = metricas.resumo()
                 salvar_json(report_path, report)
@@ -502,6 +511,9 @@ if __name__ == "__main__":
     parser.add_argument("--resume", nargs="?", const="auto", default=None,
                         help="retoma do checkpoint (sem valor = mais recente) pulando "
                              "etapas ja concluidas com as mesmas entradas")
+    parser.add_argument("--isolado", action="store_true",
+                        help="roda cada etapa em subprocess (comportamento antigo); por "
+                             "padrao as etapas rodam in-process, com traceback real")
     args = parser.parse_args()
     sys.exit(executar_esteira_completa(args.slug, args.planejar, args.rebuild_clean,
-                                      resume=args.resume))
+                                      resume=args.resume, isolado=args.isolado))

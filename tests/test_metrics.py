@@ -128,11 +128,11 @@ class IntegracaoPipelineTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp)
             report = {"aprovado": True, "erros": [], "saida": str(p / "out.mp4")}
-            with patch.object(pipeline, "preflight", return_value=report), \
+            with                  patch.object(pipeline, "preflight", return_value=report), \
                  patch.object(pipeline, "projeto", return_value=p), \
                  patch("render_dispatch.video_args", return_value=[]), \
                  patch("compositor_master_gpu.concatenar_intro", return_value=p / "out.mp4"), \
-                 patch.object(pipeline, "executar_passo",
+                 patch.object(pipeline.vx_runner, "executar",
                               side_effect=RuntimeError("falha simulada")):
                 with self.assertRaisesRegex(RuntimeError, "falha simulada"):
                     pipeline.executar_esteira_completa("demo")
@@ -171,11 +171,11 @@ class IntegracaoPipelineTest(unittest.TestCase):
                 # sai sem chamar step(): simula queda entre inicio e fim da etapa
                 raise RuntimeError("queda simulada")
 
-            with patch.object(pipeline, "preflight", return_value=report), \
+            with                  patch.object(pipeline, "preflight", return_value=report), \
                  patch.object(pipeline, "projeto", return_value=p), \
                  patch("render_dispatch.video_args", return_value=[]), \
                  patch("compositor_master_gpu.concatenar_intro", return_value=p / "out.mp4"), \
-                 patch.object(pipeline, "executar_passo", side_effect=_morre):
+                 patch.object(pipeline.vx_runner, "executar", side_effect=_morre):
                 with self.assertRaisesRegex(RuntimeError, "queda simulada"):
                     pipeline.executar_esteira_completa("demo")
 

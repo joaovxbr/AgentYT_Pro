@@ -1690,6 +1690,9 @@ def main(argv=None) -> int:
     ep.add_argument("--resume", nargs="?", const="auto", default=None,
                     help="retoma do checkpoint (sem valor = mais recente): pula etapa ja concluida "
                          "com as mesmas entradas e saidas no lugar")
+    ep.add_argument("--isolado", action="store_true",
+                    help="roda cada etapa em subprocess (comportamento antigo); por padrao as "
+                         "etapas rodam in-process, com traceback real no log e nas metricas")
     rb = sub.add_parser("rebuild-total", help="alias de producao limpa: equivale a esteira --rebuild-clean")
     rb.add_argument("slug")
     rb.add_argument("--planejar", action="store_true")
@@ -1699,7 +1702,8 @@ def main(argv=None) -> int:
         try:
             clean = bool(getattr(a, "rebuild_clean", False) or a.cmd == "rebuild-total")
             return executar_esteira_completa(a.slug, a.planejar, clean_rebuild=clean,
-                                             resume=getattr(a, "resume", None))
+                                             resume=getattr(a, "resume", None),
+                                             isolado=getattr(a, "isolado", False))
         except (ValueError, RuntimeError, OSError) as exc:
             print(f"ERRO: {exc}", file=sys.stderr)
             return 1
