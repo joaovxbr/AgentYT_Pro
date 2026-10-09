@@ -25,6 +25,7 @@ from vx import etapas as vx_etapas  # noqa: E402
 from vx import composicao as vx_composicao  # noqa: E402
 from vx import projeto as vx_projeto  # noqa: E402
 from vx import metrics as vx_metrics  # noqa: E402
+from vx import checkpoint as vx_checkpoint  # noqa: E402
 ambiente.garantir_path()
 
 def quantizar_cortes(tempos, fps=30):
@@ -167,7 +168,7 @@ def executar_passo(cmd, titulo, log_path=None):
             subprocess.run(cmd, cwd=RAIZ, env=env, stdout=log,
                            stderr=subprocess.STDOUT, check=True)
 
-def executar_esteira_completa(slug, planejar=False, clean_rebuild=False):
+def executar_esteira_completa(slug, planejar=False, clean_rebuild=False, resume=None):
     if planejar:
         check = preflight(slug, permitir_bootstrap=not clean_rebuild)
         pend = pendencias_bootstrap(slug) if not clean_rebuild else []
@@ -180,6 +181,12 @@ def executar_esteira_completa(slug, planejar=False, clean_rebuild=False):
             check["etapas"] = ["clean-rebuild", "timeline-base"] + check.get("etapas", [])
             check.setdefault("observacoes", []).insert(
                 0, "REBUILD CLEAN: derivados/legado seriam isolados em backup e a timeline seria recriada do zero.")
+        # --resume: mostra o que seria retomado, sem executar nada
+        if resume:
+            res = _planejar_resume(slug, resume, clean_rebuild)
+            check["resume"] = res
+            if res.get("run_id"):
+                check["etapas"] = res.get("a_pular", []) + check.get("etapas", [])
         print(json.dumps(check, ensure_ascii=False, indent=2))
         return 0 if check["aprovado"] else 1
 
@@ -187,19 +194,66 @@ def executar_esteira_completa(slug, planejar=False, clean_rebuild=False):
     # timeline.json/estados e antes rodavam sem protecao. Lock orfao (PID morto)
     # e retomado sozinho; lock vivo ou ilegivel falha fechado.
     p = projeto(slug)
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "_" + uuid4().hex[:8]
+    # --resume: reaproveita o run_id anterior (o checkpoint vive na pasta dele).
+    # Sem isso, cada execucao teria um run_id novo e o checkpoint nunca seria lido.
+    if resume:
+        run_id = _resolver_resume(p, resume, clean_rebuild)
+    else:
+        run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "_" + uuid4().hex[:8]
     lock = p / ".esteira.lock"
     lock_info = vx_lock.adquirir(lock, run_id)
     if lock_info.get("lock_orfao_removido"):
         print(f"[ESTEIRA] lock orfao removido (pid {lock_info['lock_orfao_removido'].get('pid')} "
               "nao existe mais)", flush=True)
     try:
-        return _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info)
+        return _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info, resume=resume)
     finally:
         vx_lock.liberar(lock, run_id)
 
 
-def _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info):
+def _resolver_resume(p, resume, clean_rebuild) -> str:
+    """Decide o run_id de retomada. `auto` = checkpoint mais recente do projeto.
+
+    Falha fechada: sem checkpoint para retomar, avisa e comeca uma execucao nova
+    (nunca inventa um run_id que nao tem checkpoint, senao o resume nao faria nada).
+    """
+    if clean_rebuild:
+        print("[ESTEIRA] --resume ignorado: rebuild-clean recomeca do zero", flush=True)
+        return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "_" + uuid4().hex[:8]
+    alvo = vx_checkpoint.mais_recente(p) if str(resume).lower() == "auto" else str(resume)
+    if not alvo or not (p / "qa" / "esteira" / alvo / vx_checkpoint.ARQ).is_file():
+        disponiveis = vx_checkpoint.run_ids_disponiveis(p)
+        aviso = ("nenhum checkpoint disponivel" if not disponiveis
+                 else "disponiveis: " + ", ".join(disponiveis[:5]))
+        print(f"[ESTEIRA] --resume {resume}: {aviso}; iniciando execucao nova", flush=True)
+        return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "_" + uuid4().hex[:8]
+    print(f"[ESTEIRA] RETOMANDO execucao {alvo}", flush=True)
+    return alvo
+
+
+def _planejar_resume(slug, resume, clean_rebuild) -> dict:
+    """Previa do resume (para --planejar): o que pularia e o que rodaria."""
+    if clean_rebuild:
+        return {"run_id": None, "motivo": "rebuild-clean recomeca do zero"}
+    p = projeto(slug)
+    alvo = vx_checkpoint.mais_recente(p) if str(resume).lower() == "auto" else str(resume)
+    caminho = p / "qa" / "esteira" / str(alvo) / vx_checkpoint.ARQ
+    if not alvo or not caminho.is_file():
+        return {"run_id": None, "motivo": "nenhum checkpoint para retomar",
+                "disponiveis": vx_checkpoint.run_ids_disponiveis(p)}
+    cp = vx_checkpoint.Checkpoint.ler(caminho, projeto=p, slug=slug)
+    pular, rodar = [], []
+    for nome in vx_etapas.nomes():
+        reg = vx_etapas.POR_NOME.get(nome)
+        if reg is None:
+            continue
+        d = cp.pode_pular(nome, reg.le, reg.escreve)
+        (pular if d.pular else rodar).append(nome)
+    return {"run_id": alvo, "a_pular": pular, "a_rodar": rodar,
+            "motivo": "checkpoint valido para as etapas listadas em a_pular"}
+
+
+def _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info, resume=None):
     clean_report = None
     if clean_rebuild:
         from clean_rebuild import preparar
@@ -260,6 +314,14 @@ def _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info):
     # execucao.json -- o formato antigo do execucao.json NAO muda (so ganha campos).
     metricas = vx_metrics.Relatorio(run_id, projeto=p)
     metricas_path = qa / "_metricas.json"
+    # Checkpoint de retomada (vx/checkpoint.py): permite `--resume` pular etapa que ja
+    # rodou com as MESMAS entradas e cujas saidas continuam no lugar. Falha fechada:
+    # sem prova, roda de novo.
+    checkpoint = vx_checkpoint.Checkpoint.ler(qa / vx_checkpoint.ARQ, projeto=p, slug=slug)
+    checkpoint_path = qa / vx_checkpoint.ARQ
+    if resume:
+        print(f"[ESTEIRA] resume ativo ({len(checkpoint.etapas)} etapa(s) no checkpoint)",
+              flush=True)
 
     def _saidas_da_etapa(nome):
         """Caminhos que a etapa declarou em vx/etapas.py, resolvidos no projeto."""
@@ -268,9 +330,36 @@ def _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info):
             return []
         return [str(p / rel.replace("{slug}", slug)) for rel in reg.escreve]
 
+    def _registrar_checkpoint(nome):
+        reg = vx_etapas.POR_NOME.get(nome)
+        if reg is None:
+            return
+        checkpoint.registrar(nome, padroes_le=reg.le, padroes_escreve=reg.escreve)
+        checkpoint.gravar(checkpoint_path)
+
     try:
         salvar_json(report_path, report)
         def step(name, args, bloqueante=True):
+            # --resume: pula a etapa so se o checkpoint PROVAR que ela ja rodou com
+            # as mesmas entradas e que as saidas estao no lugar (vx/checkpoint.py).
+            if resume:
+                reg = vx_etapas.POR_NOME.get(name)
+                if reg is not None:
+                    decisao = checkpoint.pode_pular(name, reg.le, reg.escreve)
+                    if decisao.pular:
+                        item = {"nome": name, "status": vx_metrics.STATUS_PULADA,
+                                "resume": decisao.motivo}
+                        report["etapas"].append(item)
+                        metricas.etapa_inicio(name)
+                        metricas.etapa_pulada(name, motivo=decisao.motivo)
+                        metricas.gravar(metricas_path)
+                        report["metricas"] = metricas.resumo()
+                        salvar_json(report_path, report)
+                        checkpoint.registrar_pulado(name, decisao.motivo)
+                        checkpoint.gravar(checkpoint_path)
+                        print(f"[ESTEIRA] {name}: PULADA ({decisao.motivo})", flush=True)
+                        return
+                    print(f"[ESTEIRA] {name}: roda de novo ({decisao.motivo})", flush=True)
             item = {"nome": name, "status": "executando"}
             report["etapas"].append(item)
             salvar_json(report_path, report)
@@ -316,6 +405,9 @@ def _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info):
                                duracao_s=time.perf_counter() - t0,
                                saidas=_saidas_da_etapa(name))
             metricas.gravar(metricas_path)
+            # checkpoint: a etapa terminou OK -- guarda entradas/saidas do momento para
+            # que um `--resume` futuro saiba se ainda pode pular esta etapa.
+            _registrar_checkpoint(name)
             report["metricas"] = metricas.resumo()
             salvar_json(report_path, report)
 
@@ -385,11 +477,19 @@ def _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info):
                 e.fim = report["fim"]
         metricas.gravar(metricas_path)
         report["metricas"] = metricas.resumo()
+        # checkpoint: fecha mesmo em falha, registrando o que ficou concluido --
+        # e o que permite o `--resume` retomar daqui em vez de recomecar.
+        checkpoint.gravar(checkpoint_path)
+        report["resume"] = {"run_id": run_id, "ativo": bool(resume),
+                            "etapas_no_checkpoint": len(checkpoint.etapas)}
         salvar_json(report_path, report)
         # resumo legivel no console: gargalo e falhas sem abrir log nenhum
         try:
             print(f"[ESTEIRA] metricas em {metricas_path}", flush=True)
             print(metricas.tabela(), flush=True)
+            if not resume and checkpoint.etapas:
+                print("[ESTEIRA] para retomar desta execucao: "
+                      f"estudio.py esteira {slug} --resume {run_id}", flush=True)
         except Exception:
             pass
 
@@ -399,5 +499,9 @@ if __name__ == "__main__":
     parser.add_argument("slug")
     parser.add_argument("--planejar", action="store_true")
     parser.add_argument("--rebuild-clean", action="store_true")
+    parser.add_argument("--resume", nargs="?", const="auto", default=None,
+                        help="retoma do checkpoint (sem valor = mais recente) pulando "
+                             "etapas ja concluidas com as mesmas entradas")
     args = parser.parse_args()
-    sys.exit(executar_esteira_completa(args.slug, args.planejar, args.rebuild_clean))
+    sys.exit(executar_esteira_completa(args.slug, args.planejar, args.rebuild_clean,
+                                      resume=args.resume))

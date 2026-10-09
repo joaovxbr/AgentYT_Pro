@@ -82,12 +82,20 @@ Gojo (`projetos/gojo_infinito`) passando na esteira.
     `report["metricas"]`. Etapa interrompida no meio vira `falhou`, não some.
     `metrics.comparar(a, b)` mostra o que ficou mais lento entre execuções.
     Testes: `tests/test_metrics.py` (13).
+  - *Fase 2 — retomada por checkpoint (2026-10-09, decisão 006).* `vx/checkpoint.py` +
+    `esteira <slug> --resume [run_id]`: pula a etapa já `concluido` cujo hash de entradas
+    (`le`) não mudou E cujas saídas (`escreve`) estão no lugar e não vazias. Falha fechada —
+    faltando qualquer uma das três provas, RODA. Grava `qa/esteira/<run_id>/_checkpoint.json`;
+    `gravar()` nunca levanta; hash só de `relpath:size:mtime` (não guarda conteúdo).
+    `--resume auto` usa o checkpoint mais recente; sem checkpoint, começa limpo com aviso.
+    Motivo de existir: a esteira do `asta` morreu no `sincronia` após 23 min e jogou fora todo
+    o trabalho já em disco. Testes: `tests/test_checkpoint.py` (18).
 
-- **Próximas fases do plano de robustez (não feitas):** 2) *Resume* (`--resume` por
-  checkpoint — maior ganho de tempo com menor risco, agora sobre a base de dados da Fase 1);
-  3) *Etapas in-process* (`Etapa.run(ctx)` + runner importando em vez de subprocessar — hoje
-  há 71 chamadas a `estudio.py` em `ferramentas/*.py`); 4) *Cache por hash de entrada*;
-  5) *DAG + paralelismo* (o grafo já está declarado em `vx/etapas.py -> le/escreve`).
+- **Próximas fases do plano de robustez (não feitas):** 3) *Etapas in-process* (`Etapa.run(ctx)`
+  + runner importando em vez de subprocessar — hoje há 71 chamadas a `estudio.py` em
+  `ferramentas/*.py`); 4) *Cache por hash de entrada* (reaproveita entre execuções diferentes
+  o mesmo `hash_entradas` da Fase 2); 5) *DAG + paralelismo* (o grafo já está declarado em
+  `vx/etapas.py -> le/escreve`).
 
 - Legenda ativa: `legenda`, `sincronizar`, `karaoke`, o porteiro de sincronia, o `pov --karaoke` e o `relatorio` (`qa.py`) usam `_ass_ativo` = `projeto.json -> legenda_ass`. `karaoke` e `legenda` gravavam em `legendas/<slug>.ass` fixo (render queimava a legenda antiga se o manifesto apontasse outro arquivo). Variantes de estilo (`legendas-mugen`, `legenda-palavra`, `legenda-neon`) gravam em arquivo próprio de propósito e não são queimadas. Teste: `tests/test_legenda_ativa.py`.
 - Requirements: um só, `requerimentos.txt` na raiz, fixado nas versões do `.venv` real (Python 3.10, numpy 2.2.6, torch 2.5.1+cu121). O antigo requirements.txt de ferramentas (Python 3.11, numpy 2.4.6) foi removido. Teste em `tests/test_cerebro.py` reprova segundo arquivo ou versão solta.

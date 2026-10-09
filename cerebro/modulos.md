@@ -15,6 +15,7 @@ Todo arquivo `ferramentas/*.py` precisa aparecer aqui (um teste reprova módulo 
 | `vx/config.py` | configuração em camadas e porteiros |
 | `vx/projeto.py` | caminhos de áudio e stems a partir do manifesto |
 | `vx/metrics.py` | métricas por etapa (tempo, cache, bytes de saída, motivo de falha estruturado); grava `_metricas.json` ao lado do `execucao.json` e imprime a tabela no console. Medir nunca derruba a esteira. Decisão 005 |
+| `vx/checkpoint.py` | retomada (`--resume`): decide pular/rodar cada etapa com prova tripla (concluído + entradas iguais + saídas no lugar). Falha fechada: na dúvida, roda. Grava `_checkpoint.json` por `run_id`. Decisão 006 |
 | `ferramentas/_vx.py` | ponte para os módulos de `ferramentas/` importarem `vx/` |
 
 ## Orquestração e portas

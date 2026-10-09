@@ -31,6 +31,7 @@ Comandos:
     python estudio.py avaliar <slug>          # avalia o projeto vs tendencias
     python estudio.py comfy-status [--iniciar] # VX Image Local: ComfyUI + checkpoint
     python estudio.py comfy-parar             # encerra o ComfyUI que o estudio subiu
+    python estudio.py esteira <slug> --resume [run_id]  # retoma do ponto que falhou
     python estudio.py cenas-ia <slug> [--planejar]  # cenas novas via ComfyUI (esteira ja chama)
     python estudio.py gerar-imagem <slug> --tipo capa|fundo|vertical|quadrado
     python estudio.py capa-ia <slug> [--motor local|remoto]
@@ -1686,6 +1687,9 @@ def main(argv=None) -> int:
     ep.add_argument("--planejar", action="store_true", help="somente validar entradas e mostrar etapas")
     ep.add_argument("--rebuild-clean", action="store_true",
                     help="backup + remove derivados/legado + recria timeline e todos os efeitos novos")
+    ep.add_argument("--resume", nargs="?", const="auto", default=None,
+                    help="retoma do checkpoint (sem valor = mais recente): pula etapa ja concluida "
+                         "com as mesmas entradas e saidas no lugar")
     rb = sub.add_parser("rebuild-total", help="alias de producao limpa: equivale a esteira --rebuild-clean")
     rb.add_argument("slug")
     rb.add_argument("--planejar", action="store_true")
@@ -1694,7 +1698,8 @@ def main(argv=None) -> int:
         from pipeline_autonomo_pro import executar_esteira_completa
         try:
             clean = bool(getattr(a, "rebuild_clean", False) or a.cmd == "rebuild-total")
-            return executar_esteira_completa(a.slug, a.planejar, clean_rebuild=clean)
+            return executar_esteira_completa(a.slug, a.planejar, clean_rebuild=clean,
+                                             resume=getattr(a, "resume", None))
         except (ValueError, RuntimeError, OSError) as exc:
             print(f"ERRO: {exc}", file=sys.stderr)
             return 1
