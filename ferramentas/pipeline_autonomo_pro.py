@@ -9,6 +9,7 @@ import json
 import re
 import shutil
 import os
+import time
 from pathlib import Path
 from datetime import datetime, timezone
 from dataclasses import asdict
@@ -23,6 +24,7 @@ from vx import lock as vx_lock  # noqa: E402
 from vx import etapas as vx_etapas  # noqa: E402
 from vx import composicao as vx_composicao  # noqa: E402
 from vx import projeto as vx_projeto  # noqa: E402
+from vx import metrics as vx_metrics  # noqa: E402
 ambiente.garantir_path()
 
 def quantizar_cortes(tempos, fps=30):
@@ -253,27 +255,68 @@ def _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info):
               "lock_orfao_removido": lock_info.get("lock_orfao_removido"),
               "composicao": composicao}
     report_path = qa / "execucao.json"
+    # Metricas por etapa (vx/metrics.py): tempo, cache, tamanho de saida e motivo
+    # de falha estruturado. Grava em qa/esteira/<run_id>/_metricas.json, ao lado do
+    # execucao.json -- o formato antigo do execucao.json NAO muda (so ganha campos).
+    metricas = vx_metrics.Relatorio(run_id, projeto=p)
+    metricas_path = qa / "_metricas.json"
+
+    def _saidas_da_etapa(nome):
+        """Caminhos que a etapa declarou em vx/etapas.py, resolvidos no projeto."""
+        reg = vx_etapas.POR_NOME.get(nome)
+        if reg is None:
+            return []
+        return [str(p / rel.replace("{slug}", slug)) for rel in reg.escreve]
+
     try:
         salvar_json(report_path, report)
         def step(name, args, bloqueante=True):
             item = {"nome": name, "status": "executando"}
             report["etapas"].append(item)
             salvar_json(report_path, report)
+            metricas.etapa_inicio(name)
+            t0 = time.perf_counter()
             try:
                 executar_passo([sys.executable, str(FERRAMENTAS / "estudio.py"), *args],
                               name, qa / f"{len(report['etapas']):02}_{name}.log")
-            except subprocess.CalledProcessError:
+            except subprocess.CalledProcessError as exc:
+                duracao = time.perf_counter() - t0
                 if bloqueante:
                     item["status"] = "falhou"
+                    metricas.etapa_fim(name, status=vx_metrics.STATUS_FALHOU,
+                                       duracao_s=duracao,
+                                       erro=f"exit {exc.returncode}",
+                                       origem_erro="subprocess.CalledProcessError")
+                    metricas.gravar(metricas_path)
+                    report["metricas"] = metricas.resumo()
+                    salvar_json(report_path, report)
                     raise
                 # etapa informativa: registra e segue (contrato do registro)
                 item["status"] = "aviso"
+                metricas.etapa_fim(name, status=vx_metrics.STATUS_AVISO,
+                                   duracao_s=duracao,
+                                   erro=f"exit {exc.returncode}",
+                                   origem_erro="subprocess.CalledProcessError")
+                metricas.gravar(metricas_path)
+                report["metricas"] = metricas.resumo()
                 salvar_json(report_path, report)
                 return
-            except BaseException:
+            except BaseException as exc:
+                duracao = time.perf_counter() - t0
                 item["status"] = "falhou"
+                metricas.etapa_fim(name, status=vx_metrics.STATUS_FALHOU,
+                                   duracao_s=duracao, erro=exc,
+                                   origem_erro=type(exc).__name__)
+                metricas.gravar(metricas_path)
+                report["metricas"] = metricas.resumo()
+                salvar_json(report_path, report)
                 raise
             item["status"] = "concluido"
+            metricas.etapa_fim(name, status=vx_metrics.STATUS_CONCLUIDO,
+                               duracao_s=time.perf_counter() - t0,
+                               saidas=_saidas_da_etapa(name))
+            metricas.gravar(metricas_path)
+            report["metricas"] = metricas.resumo()
             salvar_json(report_path, report)
 
         audio = vx_projeto.audio(p)
@@ -335,7 +378,20 @@ def _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info):
         raise
     finally:
         report["fim"] = datetime.now(timezone.utc).isoformat()
+        # fecha as metricas: etapas iniciadas e nao finalizadas viram "interrompida"
+        for e in metricas.etapas.values():
+            if e.status == "executando":
+                e.status = vx_metrics.STATUS_FALHOU
+                e.fim = report["fim"]
+        metricas.gravar(metricas_path)
+        report["metricas"] = metricas.resumo()
         salvar_json(report_path, report)
+        # resumo legivel no console: gargalo e falhas sem abrir log nenhum
+        try:
+            print(f"[ESTEIRA] metricas em {metricas_path}", flush=True)
+            print(metricas.tabela(), flush=True)
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     import argparse

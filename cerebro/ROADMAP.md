@@ -67,6 +67,28 @@ Gojo (`projetos/gojo_infinito`) passando na esteira.
 - Limiares internos de detecção (`imagem.py`: luz<24 etc., `scene_intelligence`) ainda no código.
 
 ## Dívidas resolvidas depois da fase 6
+- **Robustez Fase 0+1 (2026-10-09, decisão 005) — concluída.** Plano de robustez aprovado
+  pelo dono após análise completa do projeto (5 gargalos estruturais).
+  - *Fase 0 — suíte verde + versionamento.* `tests/_fixtures.py` monta projetos temporários
+    herméticos; os 4 testes que liam `projetos/sasuke/` real passaram a usar a fixture.
+    Suíte: **441 testes, OK** (antes: 428 com 1 falha + 3 erros) — a regra sagrada 6 volta a
+    ser sinal confiável. Repositório versionado (`git init`): 209 arquivos (~40 mil linhas).
+    `.gitignore` deixa FORA `.venv` (5,9 GB), `ferramentas/bin`, `projetos/`, `saidas/`,
+    `referencias/`, `backups/`, `logs/` e fontes licenciadas. Incidente:
+    `cerebro/incidentes/2026-10-09-suite-vermelha-clone-limpo.md`.
+  - *Fase 1 — observabilidade.* `vx/metrics.py`: duração, status, `cache_hit`, bytes de saída
+    e motivo/origem de falha por etapa. Grava `qa/esteira/<run_id>/_metricas.json` e imprime
+    a tabela (gargalo + falhas) no console. `execucao.json` mantém o formato antigo e ganha
+    `report["metricas"]`. Etapa interrompida no meio vira `falhou`, não some.
+    `metrics.comparar(a, b)` mostra o que ficou mais lento entre execuções.
+    Testes: `tests/test_metrics.py` (13).
+
+- **Próximas fases do plano de robustez (não feitas):** 2) *Resume* (`--resume` por
+  checkpoint — maior ganho de tempo com menor risco, agora sobre a base de dados da Fase 1);
+  3) *Etapas in-process* (`Etapa.run(ctx)` + runner importando em vez de subprocessar — hoje
+  há 71 chamadas a `estudio.py` em `ferramentas/*.py`); 4) *Cache por hash de entrada*;
+  5) *DAG + paralelismo* (o grafo já está declarado em `vx/etapas.py -> le/escreve`).
+
 - Legenda ativa: `legenda`, `sincronizar`, `karaoke`, o porteiro de sincronia, o `pov --karaoke` e o `relatorio` (`qa.py`) usam `_ass_ativo` = `projeto.json -> legenda_ass`. `karaoke` e `legenda` gravavam em `legendas/<slug>.ass` fixo (render queimava a legenda antiga se o manifesto apontasse outro arquivo). Variantes de estilo (`legendas-mugen`, `legenda-palavra`, `legenda-neon`) gravam em arquivo próprio de propósito e não são queimadas. Teste: `tests/test_legenda_ativa.py`.
 - Requirements: um só, `requerimentos.txt` na raiz, fixado nas versões do `.venv` real (Python 3.10, numpy 2.2.6, torch 2.5.1+cu121). O antigo requirements.txt de ferramentas (Python 3.11, numpy 2.4.6) foi removido. Teste em `tests/test_cerebro.py` reprova segundo arquivo ou versão solta.
 
