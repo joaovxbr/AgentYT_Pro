@@ -1,0 +1,67 @@
+# AgentYT Pro — VX RAPS. Versionar SO o que e fonte.
+# Doutrina: material de producao (audio, clipes, renders) mora FORA do Git.
+# O que precisa ser versionado: codigo, testes, config, cerebro/, assets/design/.
+# Detalhes: cerebro/00_LEIA_PRIMEIRO.md
+
+# ---- Ambiente Python / venv (5,9 GB) ----
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# ---- Binarios externos (~300 MB: ffmpeg/ffprobe/yt-dlp) ----
+# Reconstruivel: baixar de novo, nao versionar. Ver README.md "Ambiente".
+ferramentas/bin/
+
+# ---- Fontes com licenca (nao redistribuir sem checar OFL) ----
+# Versionado apenas assets/fontes/fontes_registro.json (o registro).
+ferramentas/fontes/
+assets/fontes/**/*.ttf
+assets/fontes/**/*.otf
+
+# ---- MATERIAL DE PRODUCAO (o coracao da decisao) ----
+# projetos/<slug>/ tem audio, clipes, stems, renders. Sao GBs e sao pessoais.
+# Os TESTES montam fixtures proprias (tests/_fixtures.py) e nao leem daqui.
+projetos/
+
+# Saidas: masters, shorts, artes geradas, pacotes de lancamento.
+saidas/
+
+# Referencias: videos de estudo, frames, folhas de contato (225 MB).
+referencias/
+
+# Intro oficial do canal: mp4 grande, ativo de canal.
+assets/intro/
+
+# Pacotes de assets pesados (png de cenas, tiktok).
+assets/hakari_jjk_puro/
+assets/tiktok/
+
+# ---- Logs e efemeros ----
+logs/
+*.log
+*.lock
+.esteira.lock
+
+# ---- Backups e arquivos mortos ----
+backups/
+*.rar
+*.zip
+legado/**/*.bak_*
+*.bak_*
+
+# ---- Laboratorio (previa descartavel) ----
+lab/
+
+# ---- ComfyUI / cache de IA ----
+*cache_ia*
+qa/fonte_ocr/
+
+# ---- Sistema ----
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/settings.json.bak

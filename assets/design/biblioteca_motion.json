@@ -1,0 +1,129 @@
+{
+  "_doc": "BIBLIOTECA DE MOTION (fonte unica do status e das regras de uso de cada efeito). Lida por ferramentas/motion_lab.py (escolher_estilo) e ferramentas/graphic_auto_pipeline.py. Manual: cerebro/motion.md. status: ativo = a esteira usa sozinha | em_teste = so no lab (estudio.py motion-lab) | desativado = fora da esteira, codigo mantido. gatilhos: categoria -> prioridade (1 = primeiro) para o momento do take: nome (letra cita o personagem), batida (808 forte, beat >= 0.6), atmosfera (demais), linha (linha curta, ate motion_max_linha s; mostra a frase e oculta a legenda), fechamento (ultimo quinto da musica). exige: protagonista = so quando o personagem principal do projeto esta em cena (scene_semantic_scores do cenas-auto).",
+  "_regras": {
+    "_protagonista": "Com projeto.json -> imagem_ia.tags_personagem: verificacao VISUAL (OpenCLIP pela aparencia, ex. 'white hair, blue eyes, blindfold'), protagonista se score >= protagonista_visual_min. Sem tags: usa scene_semantic_scores do cenas-auto (entity do protagonista >= protagonista_min e o maior entre os entities). O CLIP por NOME confunde personagens (Gojo virava Geto/Sukuna em 70 de 79 planos) - por isso a aparencia vem primeiro.",
+    "protagonista_visual_min": 0.50,
+    "protagonista_min": 0.40,
+    "protagonista_precisa_ser_top": true,
+    "fechamento_a_partir_de": 0.78,
+    "nao_repetir_ultimos": 3
+  },
+  "estilos": {
+    "atras_personagem": {
+      "status": "ativo", "tipo": "palavra", "camada": "tras", "lote": 1, "aprovado_em": "2026-09-30",
+      "gatilhos": {"nome": 1, "atmosfera": 7},
+      "descricao": "Palavra gigante escrita da esquerda para a direita ATRAS do personagem, com cabeca de luz.",
+      "quando_usar": "Nome do personagem ou palavra de identidade; plano com personagem visivel e recortavel.",
+      "evitar": "Plano sem personagem (o efeito de profundidade some)."
+    },
+    "palavra_por_palavra": {
+      "status": "ativo", "tipo": "linha", "camada": "frente", "lote": 1, "aprovado_em": "2026-09-30",
+      "gatilhos": {"linha": 1},
+      "descricao": "Cada palavra entra no tempo cantado (pop + blur); a atual brilha na cor da letra; a ultima fica acesa.",
+      "quando_usar": "Linha curta e marcante que merece ser lida inteira.",
+      "evitar": "Linha longa (> motion_max_take_linha): vira estilo de palavra."
+    },
+    "glitch_slice": {
+      "status": "ativo", "tipo": "palavra", "camada": "frente", "lote": 1, "aprovado_em": "2026-09-30",
+      "gatilhos": {"batida": 2, "atmosfera": 9},
+      "descricao": "Palavra entra fatiada com RGB split; treme e refatia nos picos de 808.",
+      "quando_usar": "Batida forte, palavras de ruptura (destruicao, dominio, poder).",
+      "evitar": "Trechos calmos."
+    },
+    "kanji_fundo": {
+      "status": "desativado", "tipo": "palavra", "camada": "tras+frente", "lote": 1, "aprovado_em": "2026-09-30",
+      "desativado_em": "2026-09-30", "motivo": "Pedido do usuario: fora temporariamente. Codigo e prevista no lab mantidos; reativar = status ativo.",
+      "gatilhos": {"nome": 6, "atmosfera": 1},
+      "descricao": "Kanji enorme translucido (motion_lab.json -> kanji) + palavra em portugues fechando o espacamento.",
+      "quando_usar": "Conceitos com kanji mapeado (infinito, dominio, poder).",
+      "evitar": "Conceito sem kanji (usa kanji_padrao, generico)."
+    },
+    "maquina_escrever": {
+      "status": "ativo", "tipo": "linha", "camada": "frente", "lote": 1, "aprovado_em": "2026-09-30",
+      "gatilhos": {"linha": 3},
+      "descricao": "A linha e digitada no ritmo das palavras, com cursor piscando.",
+      "quando_usar": "Linhas narrativas, confissao, fala direta.",
+      "evitar": "Refrao de alta energia."
+    },
+    "impacto_zoom": {
+      "status": "ativo", "tipo": "palavra", "camada": "frente", "lote": 2, "aprovado_em": "2026-09-30",
+      "gatilhos": {"batida": 1},
+      "descricao": "Palavra cai de 3x para 1x no tempo cantado; soco de camera (zoom + tremor na cena e no recorte) e flash.",
+      "quando_usar": "Maior batida do trecho; palavra de golpe.",
+      "evitar": "Dois seguidos (anti-repeticao ja impede)."
+    },
+    "eco_repeticao": {
+      "status": "ativo", "tipo": "palavra", "camada": "tras", "lote": 2, "aprovado_em": "2026-09-30",
+      "gatilhos": {"nome": 7, "atmosfera": 3},
+      "descricao": "Palavra atras do personagem com ecos em contorno que se expandem em ondas e pulsam no 808.",
+      "quando_usar": "Palavra-tema repetida (refrao), sensacao de ressonancia.",
+      "evitar": "Palavras muito longas (ecos ficam poluidos)."
+    },
+    "fragmentos": {
+      "status": "ativo", "tipo": "palavra", "camada": "frente", "lote": 2, "aprovado_em": "2026-09-30",
+      "gatilhos": {"batida": 3, "atmosfera": 8},
+      "descricao": "Letras voam de posicoes aleatorias girando, com motion blur, e montam a palavra.",
+      "quando_usar": "Tecnicas, transformacoes, algo se formando.",
+      "evitar": "Palavras de 1-2 letras."
+    },
+    "contorno_energia": {
+      "status": "ativo", "tipo": "palavra", "camada": "tras", "lote": 2, "aprovado_em": "2026-09-30",
+      "gatilhos": {"nome": 3, "batida": 3, "atmosfera": 2},
+      "exige": ["protagonista"],
+      "descricao": "Aura de energia na cor da letra no CONTORNO do personagem (borda do recorte), pulsando no 808, com a palavra atras dele.",
+      "quando_usar": "SO com o personagem principal do projeto em cena (regra do usuario): momentos de poder, despertar, nome dele.",
+      "evitar": "Inimigo/coadjuvante em cena, plano sem personagem, recorte vazio."
+    },
+    "letterbox_cinema": {
+      "status": "ativo", "tipo": "palavra", "camada": "tras+frente", "lote": 2, "aprovado_em": "2026-09-30",
+      "gatilhos": {"nome": 5, "atmosfera": 6},
+      "descricao": "Barras de cinema fecham; titulo espacado atras do personagem; credito (personagem - anime) na barra.",
+      "quando_usar": "Momento solene, apresentacao, virada de ato.",
+      "evitar": "Batidas rapidas (e lento de proposito)."
+    },
+    "faiscas": {
+      "status": "ativo", "tipo": "palavra", "camada": "frente", "lote": 2, "aprovado_em": "2026-09-30",
+      "gatilhos": {"batida": 4, "atmosfera": 5},
+      "descricao": "Brasas da cor da letra sobem da palavra; rajada extra nos picos de 808.",
+      "quando_usar": "Fogo, energia, explosao, refrao.",
+      "evitar": "Trechos frios/tristes (use card_cena_escura)."
+    },
+    "card_cena_escura": {
+      "status": "ativo", "tipo": "card", "camada": "fundo", "lote": 3, "aprovado_em": "2026-09-30",
+      "gatilhos": {"nome": 4, "atmosfera": 4},
+      "descricao": "Cena congelada bem escura e desfocada com push-in e brilho radial; palavra gigante + credito entre filetes. (Tipo mais comum na referencia MUGEN RAPS: 13 de 20 cards.)",
+      "quando_usar": "Pausa dramatica, frase de efeito, pos-refrao.",
+      "evitar": "Dois cards seguidos."
+    },
+    "card_cenario": {
+      "status": "ativo", "tipo": "card", "camada": "fundo", "lote": 3, "aprovado_em": "2026-09-30",
+      "gatilhos": {"atmosfera": 2},
+      "descricao": "Cenario tematico do projeto (artes_ia/fundo_*.png, sem personagem) com pan lento e tinta da cor; palavra + brasas. Sem cenario IA: cena real bem desfocada.",
+      "quando_usar": "Conceito do universo (dominio, infinito, tribunal); melhor com fundo IA gerado.",
+      "evitar": "Projeto sem artes_ia/fundo (cai no fallback desfocado)."
+    },
+    "card_retrato": {
+      "status": "ativo", "tipo": "card", "camada": "fundo", "lote": 3, "aprovado_em": "2026-09-30",
+      "gatilhos": {"nome": 2, "atmosfera": 4},
+      "exige": ["protagonista"],
+      "descricao": "Personagem nitido recortado sobre fundo escuro com brilho; palavra ENORME atras (ou na frente se ele taparia o titulo); credito embaixo.",
+      "quando_usar": "Apresentacao do personagem principal (nome dele na letra).",
+      "evitar": "Close gigante/desfocado (avaliar_retrato rejeita; sem quadro bom vira card_cena_escura).",
+      "notas": "1a versao reprovada (close de ombro tapando o titulo); corrigida com avaliar_retrato/escolher_quadro_retrato."
+    },
+    "card_manga": {
+      "status": "ativo", "tipo": "card", "camada": "fundo", "lote": 3, "aprovado_em": "2026-09-30",
+      "gatilhos": {"fechamento": 1},
+      "descricao": "Pagina de manga com 3 momentos da propria janela (P&B, reticula), paineis entrando em sequencia; palavra em balao.",
+      "quando_usar": "Fechamento do video (ultimo quinto), como a referencia.",
+      "evitar": "Inicio/meio (fica deslocado)."
+    },
+    "card_letra": {
+      "status": "ativo", "tipo": "linha", "camada": "fundo", "lote": 3, "aprovado_em": "2026-09-30",
+      "gatilhos": {"linha": 2},
+      "descricao": "Tela quase preta com degrade da cor; a linha palavra por palavra, grande e centralizada.",
+      "quando_usar": "Linha-chave que precisa de silencio visual.",
+      "evitar": "Refrao agitado."
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "_doc": "Parametros do laboratorio de tipografia em movimento (ferramentas/motion_lab.py). EM TESTE: nao entra na esteira.",
+  "fps": 30,
+  "largura": 1920,
+  "altura": 1080,
+  "recorte": {"modelo": "u2net", "lado": 512, "suavizacao": 0.55, "feather": 3},
+  "plate": {"escurecer": 0.72, "saturacao": 0.82, "push_in": 0.05, "sujeito_brilho": 0.96},
+  "tracking": {"fator": 0.6, "suavizacao": 0.8, "max_px": 80},
+  "grao": 0.03,
+  "vinheta": 0.35,
+  "fontes": {
+    "impacto": "ferramentas/fontes/Anton-Regular.ttf",
+    "apoio": "ferramentas/fontes/BebasNeue-Regular.ttf",
+    "glitch": "ferramentas/fontes/BlackOpsOne-Regular.ttf",
+    "maquina": "ferramentas/fontes/FjallaOne-Regular.ttf",
+    "kanji": "C:/Windows/Fonts/YuGothB.ttc"
+  },
+  "kanji": {
+    "infinito": "無限", "infinita": "無限", "vazio": "虚", "roxo": "紫", "purple": "紫",
+    "azul": "蒼", "vermelho": "赫", "dominio": "領域", "olhos": "六眼", "forte": "最強",
+    "mais forte": "最強", "morte": "死", "sangue": "血", "poder": "力", "deus": "神",
+    "fogo": "炎", "odio": "憎", "vinganca": "復讐", "sombra": "影", "luz": "光",
+    "inimigo": "敵", "guerra": "戦", "rei": "王", "alma": "魂", "medo": "恐"
+  },
+  "kanji_padrao": "力",
+  "_cores": "Cor do brilho pela LETRA: palavra de cor/conceito na linha cantada vence a cor tirada da cena. Chave = palavra (sem acento); variantes com o mesmo comeco tambem casam (vermelh-a, azul-ado).",
+  "cores": {
+    "azul": "#1E7BFF", "blue": "#1E7BFF", "vermelho": "#FF1F3D", "vermelha": "#FF1F3D", "red": "#FF1F3D",
+    "roxo": "#9B30FF", "roxa": "#9B30FF", "purple": "#9B30FF", "hollow purple": "#9B30FF", "violeta": "#9B30FF",
+    "infinito": "#39D5FF", "infinita": "#39D5FF", "limitless": "#39D5FF", "seis olhos": "#39D5FF",
+    "sangue": "#D0102A", "morte": "#B0102A", "odio": "#E0102A", "vinganca": "#D0102A", "sharingan": "#E0102A",
+    "fogo": "#FF6A00", "chama": "#FF6A00", "chamas": "#FF6A00", "inferno": "#FF4A00", "explod": "#FF7A1A",
+    "raio": "#FFE14A", "trovao": "#FFE14A", "chidori": "#7FD4FF", "eletric": "#9FE8FF",
+    "ouro": "#FFC940", "dourado": "#FFC940", "rei": "#FFC940", "deus": "#FFD76A", "sol": "#FFB23A", "luz": "#FFF2B0",
+    "sombra": "#7A2CFF", "vazio": "#6E3BFF", "dominio": "#6E3BFF", "maldicao": "#8A2BE2", "trevas": "#5B2BD6",
+    "noite": "#3B4CFF", "lua": "#C9D6FF", "gelo": "#9FE8FF", "neve": "#E6F4FF",
+    "veneno": "#6CFF3A", "verde": "#3DFF7A", "rosa": "#FF4FB8", "branco": "#F4F6FF", "prata": "#D8DEE9"
+  },
+  "estilos": ["atras_personagem", "palavra_por_palavra", "glitch_slice", "kanji_fundo", "maquina_escrever",
+              "impacto_zoom", "eco_repeticao", "fragmentos", "contorno_energia", "letterbox_cinema", "faiscas"]
+}

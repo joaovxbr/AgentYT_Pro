@@ -1,0 +1,83 @@
+{
+  "manga_brutal_pro": {
+    "fill": "#F7F5EE", "outline": "#060608", "outline_width": 12,
+    "glow": "#D9B44A", "glow_radius": 18, "shadow": "#000000",
+    "background": "speedlines_manga", "animation": "slam_in",
+    "underline": true, "chromatic": 4, "particles": "paper_dust",
+    "layouts": ["hero_center", "impact_fullscreen"]
+  },
+  "neon_royal": {
+    "fill": "#FFFFFF", "outline": "#21063B", "outline_width": 9,
+    "glow": "#8C43FF", "glow_radius": 26, "shadow": "#05020A",
+    "background": "void_eclipse", "animation": "neon_flicker",
+    "underline": true, "chromatic": 2, "particles": "energy",
+    "layouts": ["hero_center", "lyric_punchline", "energy_ring"]
+  },
+  "neon_write_on": {
+    "fill": "#FFFFFF", "outline": "#1A032F", "outline_width": 8,
+    "glow": "#A044FF", "glow_radius": 30, "shadow": "#030106",
+    "background": "void_eclipse", "animation": "write_on",
+    "write_duration": 0.66, "write_softness": 34,
+    "underline": true, "chromatic": 1, "particles": "energy",
+    "layouts": ["energy_ring", "hero_center", "lyric_punchline"]
+  },
+  "neon_letter_reveal": {
+    "fill": "#FFFFFF", "outline": "#18022D", "outline_width": 8,
+    "glow": "#8F4CFF", "glow_radius": 28, "shadow": "#030106",
+    "background": "void_eclipse", "animation": "letter_reveal",
+    "letter_duration": 0.64, "letter_pop": 0.06,
+    "underline": true, "chromatic": 2, "particles": "energy",
+    "layouts": ["hero_center", "energy_ring"]
+  },
+  "neon_outline_fill": {
+    "fill": "#FFFFFF", "outline": "#22053B", "outline_width": 9,
+    "glow": "#B45CFF", "glow_radius": 32, "shadow": "#030106",
+    "background": "void_eclipse", "animation": "outline_fill",
+    "outline_duration": 0.42, "fill_duration": 0.30,
+    "underline": true, "chromatic": 1, "particles": "energy",
+    "layouts": ["energy_ring", "hero_center", "lyric_punchline"]
+  },
+  "neon_trace": {
+    "fill": "#FFFFFF", "outline": "#1C0433", "outline_width": 8,
+    "glow": "#C86DFF", "glow_radius": 34, "shadow": "#030106",
+    "background": "void_eclipse", "animation": "trace_write",
+    "trace_duration": 0.68, "trace_width": 5, "fill_after": 0.56,
+    "underline": true, "chromatic": 1, "particles": "energy",
+    "layouts": ["energy_ring", "hero_center"]
+  },
+  "blood_burn": {
+    "fill": "#FFF7F2", "outline": "#250000", "outline_width": 10,
+    "glow": "#E42323", "glow_radius": 28, "shadow": "#050000",
+    "background": "blood_eclipse", "animation": "glitch_pop",
+    "underline": true, "chromatic": 7, "particles": "embers",
+    "layouts": ["hero_center", "impact_fullscreen"]
+  },
+  "void_glitch": {
+    "fill": "#F4F7FF", "outline": "#070414", "outline_width": 9,
+    "glow": "#31DFFF", "glow_radius": 22, "shadow": "#000000",
+    "background": "void_noise", "animation": "rgb_glitch_pop",
+    "underline": false, "chromatic": 10, "particles": "digital",
+    "layouts": ["hero_center", "lyric_punchline"]
+  },
+  "thunder_strike": {
+    "fill": "#FFFFFF", "outline": "#071229", "outline_width": 10,
+    "glow": "#31CFFF", "glow_radius": 30, "shadow": "#000610",
+    "background": "storm_radial", "animation": "slam_in",
+    "underline": true, "chromatic": 5, "particles": "sparks",
+    "layouts": ["hero_center", "energy_ring"]
+  },
+  "cinematic_gold": {
+    "fill": "#FFF8D7", "outline": "#241500", "outline_width": 10,
+    "glow": "#FFCB52", "glow_radius": 24, "shadow": "#090500",
+    "background": "royal_dark", "animation": "scale_punch",
+    "underline": true, "chromatic": 0, "particles": "dust",
+    "layouts": ["hero_center", "lyric_punchline"]
+  },
+  "fire_burst": {
+    "fill": "#FFF7E8", "outline": "#2A0800", "outline_width": 11,
+    "glow": "#FF6A18", "glow_radius": 30, "shadow": "#080100",
+    "background": "fire_smoke", "animation": "slam_in",
+    "underline": true, "chromatic": 4, "particles": "embers",
+    "layouts": ["hero_center", "impact_fullscreen"]
+  }
+}

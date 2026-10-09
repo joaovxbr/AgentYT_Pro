@@ -1,0 +1,22 @@
+{
+  "default": {
+    "aliases": [], "primary": "#7B1FA2", "secondary": "#00E5FF",
+    "accent": "#FFFFFF", "danger": "#E53935",
+    "preferred_presets": ["neon_royal", "manga_brutal_pro", "void_glitch"]
+  },
+  "sasuke": {
+    "aliases": ["sasuke", "sasuke uchiha"], "primary": "#7B1FA2",
+    "secondary": "#00E5FF", "accent": "#FFFFFF", "danger": "#E53935",
+    "preferred_presets": ["neon_royal", "thunder_strike", "void_glitch", "blood_burn"]
+  },
+  "jinwoo": {
+    "aliases": ["jinwoo", "jin-woo", "sung jin-woo"], "primary": "#00D9FF",
+    "secondary": "#172B66", "accent": "#EAFBFF", "danger": "#7AE6FF",
+    "preferred_presets": ["void_glitch", "neon_royal", "cinematic_gold"]
+  },
+  "akaza": {
+    "aliases": ["akaza"], "primary": "#F04BC9", "secondary": "#3D72FF",
+    "accent": "#FFFFFF", "danger": "#FF4343",
+    "preferred_presets": ["manga_brutal_pro", "blood_burn", "neon_royal"]
+  }
+}

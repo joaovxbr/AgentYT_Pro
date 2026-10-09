@@ -1,0 +1,32 @@
+# AgentYT Pro — dependencias das duas portas (estudio.py / publicar.py). ARQUIVO UNICO.
+# Versoes fixadas = as instaladas no .venv de producao (Python 3.10.4, RTX, CUDA 12.1).
+#
+#   py -3.10 -m venv .venv
+#   .venv\Scripts\python -m pip install -U pip setuptools wheel
+#   .venv\Scripts\python -m pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+#   .venv\Scripts\python -m pip install -r requerimentos.txt
+#
+# torch fica em 2.5.1+cu121: estavel com o Demucs no Windows; torch >= 2.6 quebra o
+# carregamento de modelos antigos do Demucs/OpenCLIP (weights_only).
+# Sistema (nao pip): ffmpeg/ffprobe com h264_nvenc em ferramentas/bin, GPU NVIDIA,
+# Chrome (CDP) para publicar.py. Conferir com: .venv\Scripts\python ferramentas\estudio.py doutor
+# ComfyUI (imagens IA) roda no venv proprio dele; aqui so HTTP em 127.0.0.1:8188.
+
+numpy==2.2.6
+scipy==1.15.3
+opencv-python==5.0.0.93
+Pillow==12.3.0
+scikit-image==0.25.2
+soundfile==0.14.0
+librosa==0.11.0
+websocket-client==1.9.2
+requests==2.34.2
+yt-dlp==2026.8.19
+open_clip_torch==3.3.0        # scene_intelligence / semantic_vision / critico_imagem
+faster-whisper==1.2.1         # transcrever
+demucs==4.1.0                 # stems_ia_gpu
+rembg==2.0.69                 # card-saber, paralaxe_3d
+pycryptodome==3.23.0          # skills/downloadmusic/suno_dl.py
+rapidocr_onnxruntime==1.4.4   # fonte_limpa: OCR local de logo/legenda/cartela (puxa Shapely, pyclipper)
+Shapely==2.1.2
+pyclipper==1.4.0

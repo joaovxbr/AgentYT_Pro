@@ -1,0 +1,42 @@
+{
+  "impact": {
+    "nome": "Impact",
+    "arquivo": "C:/Windows/Fonts/impact.ttf",
+    "categoria": "Sans Serif pesada",
+    "licenca": "Sistema Windows (Instalada)",
+    "comercial": null,
+    "papel_recomendado": "dominant"
+  },
+  "arial_black": {
+    "nome": "Arial Black",
+    "arquivo": "C:/Windows/Fonts/ariblk.ttf",
+    "categoria": "Sans Serif pesada",
+    "licenca": "Sistema Windows (Instalada)",
+    "comercial": null,
+    "papel_recomendado": "dominant"
+  },
+  "cinzel_bold": {
+    "nome": "Cinzel Bold",
+    "arquivo": "D:/hermes/AgentYT_Pro/ferramentas/fontes/Cinzel-Bold.ttf",
+    "categoria": "Serif Épica / Lore",
+    "licenca": "SIL Open Font License (OFL)",
+    "comercial": null,
+    "papel_recomendado": "dominant"
+  },
+  "bebas_neue": {
+    "nome": "Bebas Neue",
+    "arquivo": "D:/hermes/AgentYT_Pro/ferramentas/fontes/BebasNeue-Regular.ttf",
+    "categoria": "Condensed",
+    "licenca": "SIL Open Font License (OFL)",
+    "comercial": null,
+    "papel_recomendado": "secondary"
+  },
+  "japanese_gothic": {
+    "nome": "MS Gothic",
+    "arquivo": "C:/Windows/Fonts/msgothic.ttc",
+    "categoria": "Kanji / Manga Support",
+    "licenca": "Sistema Windows (Instalada)",
+    "comercial": null,
+    "papel_recomendado": "support"
+  }
+}

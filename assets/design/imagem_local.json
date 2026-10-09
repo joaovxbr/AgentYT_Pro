@@ -1,0 +1,67 @@
+{
+  "_doc": "Config do gerador de imagens local (ComfyUI + SDXL). Nada aqui e especifico de personagem; identidade vem do projeto.json -> imagem_ia.",
+  "comfy_url": "http://127.0.0.1:8188",
+  "comfy_dir": "D:/hermes/ComfyUI",
+  "auto_iniciar": true,
+  "espera_inicio_s": 240,
+  "checkpoint": "animagine-xl-3.1.safetensors",
+  "sampler": "euler_ancestral",
+  "scheduler": "normal",
+  "steps": 28,
+  "cfg": 6.0,
+  "timeout_s": 600,
+  "qualidade_tags": "masterpiece, best quality, very aesthetic, absurdres",
+  "negativo_base": "nsfw, lowres, bad anatomy, bad hands, text, error, missing fingers, extra digits, fewer digits, cropped, worst quality, low quality, jpeg artifacts, signature, watermark, username, blurry, artist name, logo, deformed, disfigured, extra limbs, displeasing, oldest, early",
+  "formatos": {
+    "capa": {
+      "largura": 1344,
+      "altura": 768,
+      "saida": [
+        1280,
+        720
+      ]
+    },
+    "fundo": {
+      "largura": 1344,
+      "altura": 768,
+      "saida": [
+        1920,
+        1080
+      ]
+    },
+    "vertical": {
+      "largura": 768,
+      "altura": 1344,
+      "saida": [
+        1080,
+        1920
+      ]
+    },
+    "quadrado": {
+      "largura": 1024,
+      "altura": 1024,
+      "saida": [
+        3000,
+        3000
+      ]
+    },
+    "cena": {
+      "largura": 1344,
+      "altura": 768,
+      "saida": [
+        1920,
+        1080
+      ]
+    }
+  },
+  "estilos": {
+    "capa": "dynamic pose, dramatic lighting, cinematic composition, rim light, glowing aura, dark background, looking at viewer, upper body, intense expression",
+    "fundo": "no humans, scenery, dark atmosphere, cinematic lighting, volumetric light, depth of field, wide shot",
+    "vertical": "full body, dynamic pose, dramatic lighting, cinematic, glowing aura, dark background",
+    "quadrado": "portrait, dramatic lighting, glowing aura, dark background, album cover art, centered composition",
+    "cena": "anime screenshot, cinematic lighting, dramatic, depth of field, detailed background"
+  },
+  "negativo_extra": {
+    "fundo": "1boy, 1girl, person, character, face"
+  }
+}
