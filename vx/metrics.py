@@ -48,10 +48,17 @@ from pathlib import Path
 STATUS_CONCLUIDO = "concluido"
 STATUS_FALHOU = "falhou"
 STATUS_AVISO = "aviso"          # etapa nao-bloqueante que falhou mas nao reprova
-STATUS_PULADA = "pulada"        # nao rodou (cache / saida ja existia / pre-requisito)
+STATUS_PULADA = "pulada"        # nao rodou nesta execucao (retomada --resume)
+#: Nao rodou porque uma execucao ANTERIOR ja produziu o mesmo resultado (vx/cache.py).
+#: Distinto de PULADA de proposito: no relatorio, "retomei" e "reaproveitei de outra
+#: execucao" contam historias diferentes sobre por que a etapa nao consumiu tempo.
+STATUS_CACHE = "cache"
 
 #: Status que exigem cuidados na leitura do relatorio.
 STATUS_RUINS = (STATUS_FALHOU, STATUS_AVISO)
+
+#: Status em que a etapa nao executou de fato.
+STATUS_OCIOSOS = (STATUS_PULADA, STATUS_CACHE)
 
 
 def _agora() -> str:
@@ -142,6 +149,8 @@ class EtapaMedida:
     fim: str | None = None
     #: Rota de falha (qual funcao levantou) -- util quando o erro nao diz onde nasceu.
     origem_erro: str | None = None
+    #: Por que a etapa nao executou (retomada ou cache) -- so para status ociosos.
+    motivo: str = ""
 
     def como_dict(self) -> dict:
         d = {
@@ -155,6 +164,8 @@ class EtapaMedida:
             d["inicio"] = self.inicio
         if self.fim:
             d["fim"] = self.fim
+        if self.motivo:
+            d["motivo"] = self.motivo
         if self.erro:
             d["erro"] = self.erro
         if self.origem_erro:
@@ -207,8 +218,24 @@ class Relatorio:
         return e
 
     def etapa_pulada(self, nome: str, motivo: str = "cache") -> EtapaMedida:
-        return self.etapa_fim(nome, status=STATUS_PULADA, duracao_s=0.0,
-                              cache_hit=True, erro=None, origem_erro=None)
+        e = self.etapa_fim(nome, status=STATUS_PULADA, duracao_s=0.0,
+                           cache_hit=True, erro=None, origem_erro=None)
+        e.motivo = str(motivo or "")
+        return e
+
+    def etapa_cache(self, nome: str, *, motivo: str = "", bytes_: int = 0) -> EtapaMedida:
+        """Etapa nao executada: resultado vindo do cache entre execucoes (vx/cache.py).
+
+        `motivo` e o porque da decisao; `bytes_` e o tamanho do que foi reaproveitado,
+        que e o dado que mostra o ganho real (evitou refazer aquele trabalho).
+        """
+        e = self.etapa_fim(nome, status=STATUS_CACHE, duracao_s=0.0, cache_hit=True)
+        e.erro = None
+        e.origem_erro = None
+        e.motivo = str(motivo or "")
+        if bytes_:
+            e.bytes_saida = int(bytes_)
+        return e
 
     # -- leitura -------------------------------------------------------------
     @property
@@ -233,6 +260,8 @@ class Relatorio:
             "n_etapas": len(self.etapas),
             "n_falhas": len(self.falhas),
             "n_cache_hit": sum(1 for e in self.etapas.values() if e.cache_hit),
+            "n_cache": sum(1 for e in self.etapas.values() if e.status == STATUS_CACHE),
+            "n_puladas": sum(1 for e in self.etapas.values() if e.status == STATUS_PULADA),
         }
 
     def gravar(self, destino: str | Path) -> Path:
@@ -258,11 +287,18 @@ class Relatorio:
             saida = _human_bytes(e.bytes_saida) if e.bytes_saida else ""
             if e.status == STATUS_FALHOU:
                 saida = (e.erro or "")[:40]
+            elif e.status in STATUS_OCIOSOS and e.motivo:
+                saida = e.motivo[:40]
             linhas.append(f"  {e.nome:<18} {e.status:<10} {tmp:>9} {cache:>6}  {saida}")
         g = self.gargalo()
         if g is not None:
             linhas.append("  " + "-" * 62)
             linhas.append(f"  gargalo: {g.nome} ({g.duracao_s:.1f}s)")
+        reaproveitadas = [e for e in self.etapas.values() if e.status == STATUS_CACHE]
+        if reaproveitadas:
+            bytes_ = sum(e.bytes_saida for e in reaproveitadas)
+            linhas.append(f"  reaproveitadas do cache: {len(reaproveitadas)} etapa(s)"
+                          + (f" ({_human_bytes(bytes_)})" if bytes_ else ""))
         return "\n".join(linhas)
 
 

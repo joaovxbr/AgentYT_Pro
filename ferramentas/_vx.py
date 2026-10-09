@@ -11,6 +11,6 @@ _RAIZ = str(Path(__file__).resolve().parents[1])
 if _RAIZ not in sys.path:
     sys.path.insert(0, _RAIZ)
 
-from vx import ambiente, config, projeto  # noqa: E402,F401
+from vx import ambiente, cache, config, projeto  # noqa: E402,F401
 
 ambiente.garantir_path()

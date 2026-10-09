@@ -98,11 +98,21 @@ Gojo (`projetos/gojo_infinito`) passando na esteira.
     sem passar pelo `finally`; o runner converte em `ErroDeEtapa`. `--isolado` volta ao
     subprocess. Pré-requisito estrutural das Fases 4 e 5 (um DAG não se monta sobre subprocess).
     Testes: `tests/test_runner.py` (25).
+  - *Fase 4 — cache por hash de entrada (2026-10-09, decisão 008).* `vx/cache.py` reaproveita
+    uma etapa entre execuções DIFERENTES: se alguma execução anterior processou estas mesmas
+    entradas e as saídas continuam no lugar, a etapa nem é chamada. Escopo é o projeto
+    (`qa/cache/<etapa>.json`), não o `run_id` — é o que distingue de `--resume`. Mesma primitiva
+    de hash do checkpoint, então os dois nunca discordam sobre "mesma entrada". Guarda variações
+    (voltar a uma entrada antiga volta a reaproveitar) e conta `usos`. `cacheavel=False` nas 6
+    etapas de composição (editam a timeline sobre a base limpa por design) e nas 3 de master
+    (escrevem em `saidas/esteira/<run_id>/`). Controle: `estudio.py cache <slug> [--limpar]`,
+    `esteira --sem-cache`; `--rebuild-clean` implica `--sem-cache`. Medido: na 2ª execução, 5 de
+    6 etapas cacheáveis não são chamadas, com invalidação precisa (mudar a letra derruba só o
+    que depende dela). Testes: `tests/test_cache.py` (28).
 
-- **Próximas fases do plano de robustez (não feitas):** 4) *Cache por hash de entrada*
-  (reaproveita entre execuções diferentes o mesmo `hash_entradas` da Fase 2); 5) *DAG +
-  paralelismo* (o grafo já está declarado em `vx/etapas.py -> le/escreve`, e as etapas agora são
-  chamáveis no mesmo processo).
+- **Próxima fase do plano de robustez (não feita):** 5) *DAG + paralelismo* — o grafo já está
+  declarado em `vx/etapas.py -> le/escreve`, e as etapas agora são chamáveis no mesmo processo
+  (Fase 3), que é o que faltava para montar o grafo.
 
 - Legenda ativa: `legenda`, `sincronizar`, `karaoke`, o porteiro de sincronia, o `pov --karaoke` e o `relatorio` (`qa.py`) usam `_ass_ativo` = `projeto.json -> legenda_ass`. `karaoke` e `legenda` gravavam em `legendas/<slug>.ass` fixo (render queimava a legenda antiga se o manifesto apontasse outro arquivo). Variantes de estilo (`legendas-mugen`, `legenda-palavra`, `legenda-neon`) gravam em arquivo próprio de propósito e não são queimadas. Teste: `tests/test_legenda_ativa.py`.
 - Requirements: um só, `requerimentos.txt` na raiz, fixado nas versões do `.venv` real (Python 3.10, numpy 2.2.6, torch 2.5.1+cu121). O antigo requirements.txt de ferramentas (Python 3.11, numpy 2.4.6) foi removido. Teste em `tests/test_cerebro.py` reprova segundo arquivo ou versão solta.

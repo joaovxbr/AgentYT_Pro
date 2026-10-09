@@ -16,7 +16,6 @@ Filosofia:
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 import math
 import os
@@ -24,7 +23,7 @@ import re
 import shutil
 from pathlib import Path
 
-from _vx import config as vx_config, projeto as vx_projeto
+from _vx import cache as vx_cache, config as vx_config, projeto as vx_projeto
 from audio_reactive_fx import carregar_picos
 import graphic_auto_pipeline as gap
 import manga_panel_director as manga
@@ -75,10 +74,9 @@ def _write_json(path: Path, data) -> None:
 
 
 def _hash(data) -> str:
-    raw = json.dumps(
-        data, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
-    return hashlib.sha256(raw).hexdigest()
+    # Hash canonico do nucleo (vx/cache.hash_obj): antes era uma copia local sem
+    # `default=str`, que explodiria com Path/datetime no payload. Ver decisao 008.
+    return vx_cache.hash_obj(data)
 
 
 def _config(manifest: dict) -> dict:

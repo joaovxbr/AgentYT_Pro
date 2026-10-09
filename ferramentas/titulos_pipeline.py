@@ -20,7 +20,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from _vx import config as vx_config
+from _vx import cache as vx_cache, config as vx_config
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 import cenas_ia_pipeline as cia
@@ -47,7 +47,8 @@ def _cfg(manifest: dict) -> dict:
 
 
 def _hash(d) -> str:
-    return hashlib.sha256(json.dumps(d, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+    # Hash canonico do nucleo (vx/cache.hash_obj). Ver decisao 008.
+    return vx_cache.hash_obj(d)
 
 
 def _fonte(nome: str, tam: int):

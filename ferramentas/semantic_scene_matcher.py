@@ -10,7 +10,6 @@ anime específico.
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 import math
 import os
@@ -21,6 +20,7 @@ from scene_intelligence import catalogar_projeto
 from semantic_vision import profile_from_manifest, semantic_targets
 from style_preset_engine import normalizar
 from timeline_clipe import validar as validar_timeline
+from _vx import cache as vx_cache
 
 SCHEMA_VERSION = 2
 NORMAL_TYPES = {"", "lyric", "narrativo", "respiro", "gap", "intro", "outro"}
@@ -96,10 +96,8 @@ CONCEPTS = [
 
 
 def _hash_obj(data) -> str:
-    raw = json.dumps(
-        data, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
-    return hashlib.sha256(raw).hexdigest()
+    # Hash canonico do nucleo (vx/cache.hash_obj). Ver decisao 008.
+    return vx_cache.hash_obj(data)
 
 
 def _read_json(path: Path, default=None):

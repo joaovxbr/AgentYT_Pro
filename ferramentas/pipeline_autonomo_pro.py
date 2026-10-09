@@ -27,6 +27,7 @@ from vx import projeto as vx_projeto  # noqa: E402
 from vx import metrics as vx_metrics  # noqa: E402
 from vx import checkpoint as vx_checkpoint  # noqa: E402
 from vx import runner as vx_runner  # noqa: E402
+from vx import cache as vx_cache  # noqa: E402
 ambiente.garantir_path()
 
 def quantizar_cortes(tempos, fps=30):
@@ -172,7 +173,7 @@ def executar_passo(cmd, titulo, log_path=None):
                            stderr=subprocess.STDOUT, check=True)
 
 def executar_esteira_completa(slug, planejar=False, clean_rebuild=False, resume=None,
-                              isolado=False):
+                              isolado=False, cache=True):
     if planejar:
         check = preflight(slug, permitir_bootstrap=not clean_rebuild)
         pend = pendencias_bootstrap(slug) if not clean_rebuild else []
@@ -211,7 +212,7 @@ def executar_esteira_completa(slug, planejar=False, clean_rebuild=False, resume=
               "nao existe mais)", flush=True)
     try:
         return _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info, resume=resume,
-                                  isolado=isolado)
+                                  isolado=isolado, cache=cache)
     finally:
         vx_lock.liberar(lock, run_id)
 
@@ -259,7 +260,11 @@ def _planejar_resume(slug, resume, clean_rebuild) -> dict:
 
 
 def _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info, resume=None,
-                       isolado=False):
+                       isolado=False, cache=True):
+    # Cache por hash de entrada (vx/cache.py) -- escopo do PROJETO, sobrevive entre
+    # execucoes. `--rebuild-clean` desliga: o pedido explicito e refazer tudo do zero,
+    # e reaproveitar por baixo dos panos contradiria a intencao do operador.
+    cache_ativo = bool(cache) and not clean_rebuild
     clean_report = None
     if clean_rebuild:
         from clean_rebuild import preparar
@@ -362,6 +367,35 @@ def _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info, resume=None,
                         print(f"[ESTEIRA] {name}: PULADA ({decisao.motivo})", flush=True)
                         return
                     print(f"[ESTEIRA] {name}: roda de novo ({decisao.motivo})", flush=True)
+            # Cache por hash (vx/cache.py): diferente do --resume, aqui o escopo e o
+            # PROJETO, nao a execucao. Se alguma execucao ANTERIOR processou estas
+            # mesmas entradas e produziu saidas que ainda estao no lugar, a etapa nem
+            # e chamada. So vale para etapas `cacheavel` do registro: as de composicao
+            # reaplicam sobre a base limpa de proposito (vx/composicao.py).
+            if cache_ativo:
+                reg = vx_etapas.POR_NOME.get(name)
+                if reg is not None and reg.cacheavel:
+                    decisao_cache = vx_cache.pode_reaproveitar(
+                        name, reg.le, reg.escreve, p, slug)
+                    if decisao_cache.reaproveitar:
+                        evento = {"nome": name, "status": vx_metrics.STATUS_CACHE,
+                                  "cache": decisao_cache.motivo}
+                        report["etapas"].append(evento)
+                        metricas.etapa_inicio(name)
+                        metricas.etapa_cache(name, motivo=decisao_cache.motivo,
+                                             bytes_=decisao_cache.bytes)
+                        metricas.gravar(metricas_path)
+                        report["metricas"] = metricas.resumo()
+                        salvar_json(report_path, report)
+                        vx_cache.confirmar_uso(name, reg.le, p, slug)
+                        # A etapa esta "feita" nesta execucao: registra no checkpoint
+                        # tambem, para um --resume posterior nao a reavaliar a toa.
+                        checkpoint.registrar(name, padroes_le=reg.le,
+                                             padroes_escreve=reg.escreve,
+                                             status="concluido")
+                        checkpoint.gravar(checkpoint_path)
+                        print(f"[ESTEIRA] {name}: CACHE ({decisao_cache.motivo})", flush=True)
+                        return
             item = {"nome": name, "status": "executando"}
             report["etapas"].append(item)
             salvar_json(report_path, report)
@@ -417,6 +451,11 @@ def _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info, resume=None,
             # checkpoint: a etapa terminou OK -- guarda entradas/saidas do momento para
             # que um `--resume` futuro saiba se ainda pode pular esta etapa.
             _registrar_checkpoint(name)
+            # cache: guarda entradas/saidas com escopo de PROJETO, para que uma
+            # execucao FUTURA (outro run_id) reaproveite sem nem chamar a etapa.
+            reg = vx_etapas.POR_NOME.get(name)
+            if cache_ativo and reg is not None and reg.cacheavel:
+                vx_cache.registrar(name, reg.le, reg.escreve, p, slug)
             report["metricas"] = metricas.resumo()
             salvar_json(report_path, report)
 
@@ -514,6 +553,10 @@ if __name__ == "__main__":
     parser.add_argument("--isolado", action="store_true",
                         help="roda cada etapa em subprocess (comportamento antigo); por "
                              "padrao as etapas rodam in-process, com traceback real")
+    parser.add_argument("--sem-cache", action="store_true",
+                        help="ignora o cache por hash entre execucoes (refaz toda etapa "
+                             "cacheavel); --rebuild-clean ja implica isso")
     args = parser.parse_args()
     sys.exit(executar_esteira_completa(args.slug, args.planejar, args.rebuild_clean,
-                                      resume=args.resume, isolado=args.isolado))
+                                      resume=args.resume, isolado=args.isolado,
+                                      cache=not args.sem_cache))

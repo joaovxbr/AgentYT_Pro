@@ -24,6 +24,11 @@ class Etapa:
     quando: str = "sempre"         # sempre | se_ausente (so roda se alguma saida falta)
     args: tuple[str, ...] = field(default_factory=tuple)  # args extras alem do slug
     notas: str = ""
+    #: Pode ser reaproveitada entre execucoes pelo cache por hash (vx/cache.py).
+    #: `False` nas etapas de composicao: elas EDITAM `timeline.json` sobre a base
+    #: limpa a cada esteira (vx/composicao.py) e ja tem idempotencia interna via
+    #: `qa/<etapa>/state.json`. Cachear por fora brigaria com esse desenho.
+    cacheavel: bool = True
 
 
 BOOTSTRAP = (
@@ -68,27 +73,33 @@ PRODUCAO = (
           le=("timeline.json", "letra_sincronizada.json", "clips_raw/*.mp4", "projeto.json"),
           escreve=("timeline.json", "scene_intelligence.json", "qa/scene_matcher/plano.json",
                    "qa/scene_matcher/state.json"),
-          notas="Cenas mortas (tela preta, splash de streaming) sao excluidas (dead_scene)."),
+          notas="Cenas mortas (tela preta, splash de streaming) sao excluidas (dead_scene).",
+          cacheavel=False),
     Etapa("chroma-auto", "Cena de tela verde (chroma key) vira cena composta: fundo do projeto + personagem recortado + aura pulsando no 808.",
           le=("timeline.json", "qa/fonte_limpa.json", "artes_ia/fundo_*.png"),
           escreve=("timeline.json", "clips_raw/vx_chroma/*", "qa/vx_chroma/state.json"),
-          notas="Pedido do usuario (Douma): nunca mostrar a tela verde crua."),
+          notas="Pedido do usuario (Douma): nunca mostrar a tela verde crua.",
+          cacheavel=False),
     Etapa("cenas-ia", "Gera cena nova no ComfyUI so onde a cena real ficou fraca.",
           le=("timeline.json", "projeto.json", "assets/design/cenas_ia_map.json"),
           escreve=("timeline.json", "artes_ia/*", "clips_raw/vx_cenas_ia/*.mp4",
                    "qa/vx_cenas_ia/plano.json", "qa/vx_cenas_ia/state.json"),
-          notas="ComfyUI offline = pula com aviso (cenas_ia.strict=true torna obrigatorio)."),
+          notas="ComfyUI offline = pula com aviso (cenas_ia.strict=true torna obrigatorio).",
+          cacheavel=False),
     Etapa("titulos", "Title Card (abertura) e End Card (encerramento).",
           le=("timeline.json", "projeto.json", "artes_ia/*"),
-          escreve=("timeline.json", "clips_raw/vx_titulos/*", "qa/vx_titulos/state.json")),
+          escreve=("timeline.json", "clips_raw/vx_titulos/*", "qa/vx_titulos/state.json"),
+          cacheavel=False),
     Etapa("manga-auto", "Insere 1-2 takes raros de manga em climax fortes.",
           le=("timeline.json", "letra_sincronizada.json"),
-          escreve=("timeline.json", "clips_raw/vx_manga_auto/*", "qa/vx_manga_auto/state.json")),
+          escreve=("timeline.json", "clips_raw/vx_manga_auto/*", "qa/vx_manga_auto/state.json"),
+          cacheavel=False),
     Etapa("graficos-auto", "Takes tipograficos pela letra + picos de 808, em motion sobre a cena real do anime.",
           le=("timeline.json", "letra_sincronizada.json", "assets/design/semantic_style_map.json",
               "assets/design/motion_lab.json"),
           escreve=("timeline.json", "clips_raw/vx_graphics_auto/*", "qa/vx_graphics_auto/state.json"),
-          notas="Estilos de linha ocultam a legenda so no trecho do take (decisao 003)."),
+          notas="Estilos de linha ocultam a legenda so no trecho do take (decisao 003).",
+          cacheavel=False),
     Etapa("planejar", "Plano de camera por shot (respeita graphics_locked).",
           le=("timeline.json", "entradas/transcricao.json"), escreve=("plano_visual.json",)),
     Etapa("sincronia", "Porteiro de legenda: ASR + linhas exibidas com a voz em silencio.",
@@ -101,17 +112,21 @@ MASTER = (
     Etapa("render-clipe", "Render do corpo em NVENC com legenda ASS queimada.",
           le=("timeline.json", "plano_visual.json", "<projeto.json:legenda_ass>", "entradas/{slug}_normalizado.wav"),
           escreve=("saidas/esteira/<run_id>/{slug}_corpo.mp4",), fase="master",
-          args=("--legenda",)),
+          args=("--legenda",),
+          notas="Nao cacheavel: escreve em saidas/esteira/<run_id>/, que e da execucao atual.",
+          cacheavel=False),
     Etapa("intro", "Concatena a intro oficial + loudnorm -14 LUFS + limitador de true peak.",
           le=("saidas/esteira/<run_id>/{slug}_corpo.mp4", "assets/intro/Eu_preciso_criar_INTRO_para_o.mp4"),
           escreve=("saidas/esteira/<run_id>/{slug}_master_final_com_intro.mp4",), fase="master",
-          notas="Interna ao orquestrador (compositor_master_gpu.concatenar_intro)."),
+          notas="Interna ao orquestrador (compositor_master_gpu.concatenar_intro).",
+          cacheavel=False),
     Etapa("qa-master", "Decode completo + porteiro de imagem + porteiro de TEXTO (OCR no corpo) + porteiro de audio no master final.",
           le=("saidas/esteira/<run_id>/{slug}_master_final_com_intro.mp4", "saidas/esteira/<run_id>/{slug}_corpo.mp4"),
           escreve=("qa/esteira/<run_id>/decode.log", "qa/esteira/<run_id>/imagem.json",
                    "qa/esteira/<run_id>/texto_render.json", "qa/esteira/<run_id>/audio.json"), fase="master",
           notas="Interna ao orquestrador. Clareza vocal e so aviso. Texto que nao e da letra/titulos "
-                "(logo de streaming, legenda em ingles, cartela) reprova (fonte_limpa.auditar_texto_render)."),
+                "(logo de streaming, legenda em ingles, cartela) reprova (fonte_limpa.auditar_texto_render).",
+          cacheavel=False),
 )
 
 TODAS = BOOTSTRAP + PRODUCAO + MASTER
@@ -139,6 +154,7 @@ def documentacao() -> str:
             flags = ["bloqueia" if e.bloqueante else "informativa"]
             if e.quando == "se_ausente":
                 flags.append("só se a saída faltar")
+            flags.append("cacheável" if e.cacheavel else "sempre refeita")
             out += [f"### `{e.nome}` ({', '.join(flags)})", "", e.descricao, ""]
             out.append("- **Lê:** " + (", ".join(f"`{x}`" for x in e.le) or "—"))
             out.append("- **Grava:** " + (", ".join(f"`{x}`" for x in e.escreve) or "—"))

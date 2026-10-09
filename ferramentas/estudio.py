@@ -1138,6 +1138,48 @@ def cmd_etapas(slug: str | None) -> int:
     return 0
 
 
+def cmd_cache(slug: str | None, limpar: bool = False) -> int:
+    """Mostra (ou limpa) o cache por hash de entrada de um projeto.
+
+    Responde a pergunta operacional: "o que ja esta pronto e pode ser reaproveitado,
+    e o cache esta realmente pagando o proprio custo?". `usos` e o dado-chave --
+    uma entrada com usos alto e uma etapa que repete; usos 0/1 nao compensa.
+    """
+    from vx import cache as vx_cache
+    from vx import etapas as vx_etapas
+
+    if not slug:
+        print("informe o slug: estudio.py cache <slug> [--limpar]")
+        return 2
+    p = dir_projeto(slug)
+
+    if limpar:
+        removidos = vx_cache.invalidar(p)
+        print(f"cache limpo: {removidos} arquivo(s) removido(s) de {vx_cache.cache_dir(p)}")
+        return 0
+
+    dados = vx_cache.resumo(p)
+    cacheaveis = [e.nome for e in vx_etapas.TODAS if e.cacheavel]
+    print(f"cache de '{slug}' em {dados['diretorio']}")
+    print(f"  {'ETAPA':<18} {'VARIACOES':>9} {'USOS':>6} {'TAMANHO':>9}")
+    print("  " + "-" * 46)
+    for nome in cacheaveis:
+        info = dados["etapas"].get(nome)
+        if not info:
+            print(f"  {nome:<18} {'-':>9} {'-':>6} {'-':>9}")
+            continue
+        tam = info["bytes"]
+        for unidade in ("B", "KB", "MB", "GB"):
+            if tam < 1024 or unidade == "GB":
+                texto = f"{tam:.0f}{unidade}" if unidade == "B" else f"{tam:.1f}{unidade}"
+                break
+            tam /= 1024
+        print(f"  {nome:<18} {info['variacoes']:>9} {info['usos']:>6} {texto:>9}")
+    print(f"\n  {dados['total_variacoes']} variacao(oes) guardada(s); "
+          f"etapas nao cacheaveis (composicao/master) nao aparecem aqui.")
+    return 0
+
+
 def cmd_cerebro() -> int:
     """Regenera cerebro/etapas.md a partir do registro de etapas."""
     from vx import etapas as vx_etapas
@@ -1443,6 +1485,9 @@ def main(argv=None) -> int:
     al.add_argument("slug")
     et = sub.add_parser("etapas", help="ordem da esteira e, com slug, o que falta em cada etapa")
     et.add_argument("slug", nargs="?")
+    ca = sub.add_parser("cache", help="cache por hash entre execucoes: o que esta guardado e quanto ja foi reaproveitado")
+    ca.add_argument("slug", nargs="?")
+    ca.add_argument("--limpar", action="store_true", help="apaga o cache do projeto")
     sub.add_parser("cerebro", help="regenera cerebro/etapas.md (vx/etapas.py) e cerebro/biblioteca_motion.md (biblioteca_motion.json)")
     sz = sub.add_parser("sincronizar"); sz.add_argument("slug")
     kk = sub.add_parser("karaoke", help="legenda karaoke fill-sweep word-level")
@@ -1693,6 +1738,9 @@ def main(argv=None) -> int:
     ep.add_argument("--isolado", action="store_true",
                     help="roda cada etapa em subprocess (comportamento antigo); por padrao as "
                          "etapas rodam in-process, com traceback real no log e nas metricas")
+    ep.add_argument("--sem-cache", action="store_true",
+                    help="ignora o cache por hash entre execucoes e refaz toda etapa cacheavel "
+                         "(--rebuild-clean ja implica isso)")
     rb = sub.add_parser("rebuild-total", help="alias de producao limpa: equivale a esteira --rebuild-clean")
     rb.add_argument("slug")
     rb.add_argument("--planejar", action="store_true")
@@ -1703,7 +1751,8 @@ def main(argv=None) -> int:
             clean = bool(getattr(a, "rebuild_clean", False) or a.cmd == "rebuild-total")
             return executar_esteira_completa(a.slug, a.planejar, clean_rebuild=clean,
                                              resume=getattr(a, "resume", None),
-                                             isolado=getattr(a, "isolado", False))
+                                             isolado=getattr(a, "isolado", False),
+                                             cache=not getattr(a, "sem_cache", False))
         except (ValueError, RuntimeError, OSError) as exc:
             print(f"ERRO: {exc}", file=sys.stderr)
             return 1
@@ -1738,6 +1787,8 @@ def main(argv=None) -> int:
         return cmd_auditar_letra(a.slug)
     if a.cmd == "etapas":
         return cmd_etapas(a.slug)
+    if a.cmd == "cache":
+        return cmd_cache(a.slug, getattr(a, "limpar", False))
     if a.cmd == "cerebro":
         return cmd_cerebro()
     if a.cmd == "sincronia":

@@ -8,7 +8,6 @@ A timeline original e preservada em estado para permitir reexecucao idempotente.
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 import math
 import os
@@ -29,7 +28,7 @@ from timeline_clipe import validar as validar_timeline
 RAIZ = Path(__file__).resolve().parents[1]
 PROJETOS = RAIZ / "projetos"
 FPS = 30
-from _vx import config as vx_config, projeto as vx_projeto  # noqa: E402
+from _vx import cache as vx_cache, config as vx_config, projeto as vx_projeto  # noqa: E402
 
 DEFAULT_CONFIG = {
     "enabled": True,
@@ -105,10 +104,8 @@ def _atomic_json(path: Path, data) -> None:
 
 
 def _hash_obj(data) -> str:
-    raw = json.dumps(
-        data, sort_keys=True, ensure_ascii=False, separators=(",", ":")
-    ).encode("utf-8")
-    return hashlib.sha256(raw).hexdigest()
+    # Hash canonico do nucleo (vx/cache.hash_obj). Ver decisao 008.
+    return vx_cache.hash_obj(data)
 
 
 def _cfg(manifesto: dict) -> dict:

@@ -23,7 +23,6 @@ Porta: estudio.py chroma-auto <slug>   (etapa da esteira logo depois de cenas-au
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 import math
 import re
@@ -34,7 +33,7 @@ import numpy as np
 from PIL import Image, ImageChops, ImageFilter
 
 import _vx  # noqa: F401
-from _vx import config as vx_config, projeto as vx_projeto
+from _vx import cache as vx_cache, config as vx_config, projeto as vx_projeto
 
 RAIZ = Path(__file__).resolve().parents[1]
 PROJETOS = RAIZ / "projetos"
@@ -51,7 +50,8 @@ def _json(p: Path, padrao=None):
 
 
 def _hash(obj) -> str:
-    return hashlib.sha256(json.dumps(obj, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()
+    # Hash canonico do nucleo (vx/cache.hash_obj). Ver decisao 008.
+    return vx_cache.hash_obj(obj)
 
 
 # ---------------------------------------------------------------------------
