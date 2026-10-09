@@ -1138,6 +1138,26 @@ def cmd_etapas(slug: str | None) -> int:
     return 0
 
 
+def cmd_dag(slug: str | None = None) -> int:
+    """Mostra o grafo de dependencias e as ondas paralelizaveis (vx/dag.py).
+
+    Responde a pergunta operacional: "quanto a esteira ganharia com --jobs, e
+    por que essas etapas nao podem rodar juntas?". Le o registro unico
+    (`vx/etapas.py`), entao nunca fica defasado do pipeline.
+    """
+    from vx import dag as vx_dag
+
+    g = vx_dag.construir()
+    print(vx_dag.diagnosticar(g))
+    ganho = vx_dag.ganho_estimado(g)
+    print()
+    print(f"  {ganho['n_etapas']} etapa(s) em {ganho['n_ondas']} onda(s); "
+          f"{ganho['n_ondas_paralelas']} onda(s) com paralelismo "
+          f"({ganho['etapas_em_paralelo']} etapa(s)).")
+    print("  Use `estudio.py esteira", (slug or "<slug>"), "--jobs N` para ligar.")
+    return 0
+
+
 def cmd_cache(slug: str | None, limpar: bool = False) -> int:
     """Mostra (ou limpa) o cache por hash de entrada de um projeto.
 
@@ -1488,6 +1508,8 @@ def main(argv=None) -> int:
     ca = sub.add_parser("cache", help="cache por hash entre execucoes: o que esta guardado e quanto ja foi reaproveitado")
     ca.add_argument("slug", nargs="?")
     ca.add_argument("--limpar", action="store_true", help="apaga o cache do projeto")
+    dg = sub.add_parser("dag", help="grafo de dependencias e ondas paralelizaveis (vx/dag.py)")
+    dg.add_argument("slug", nargs="?")
     sub.add_parser("cerebro", help="regenera cerebro/etapas.md (vx/etapas.py) e cerebro/biblioteca_motion.md (biblioteca_motion.json)")
     sz = sub.add_parser("sincronizar"); sz.add_argument("slug")
     kk = sub.add_parser("karaoke", help="legenda karaoke fill-sweep word-level")
@@ -1741,6 +1763,12 @@ def main(argv=None) -> int:
     ep.add_argument("--sem-cache", action="store_true",
                     help="ignora o cache por hash entre execucoes e refaz toda etapa cacheavel "
                          "(--rebuild-clean ja implica isso)")
+    ep.add_argument("--jobs", type=int, default=1, metavar="N",
+                    help="roda a fase de producao em ondas, ate N etapas em paralelo "
+                         "(vx/dag.py). Padrao 1 = serial. As etapas que escrevem "
+                         "timeline.json nunca rodam juntas.")
+    ep.add_argument("--serial", action="store_true",
+                    help="forca execucao serial (equivale a --jobs 1)")
     rb = sub.add_parser("rebuild-total", help="alias de producao limpa: equivale a esteira --rebuild-clean")
     rb.add_argument("slug")
     rb.add_argument("--planejar", action="store_true")
@@ -1749,10 +1777,12 @@ def main(argv=None) -> int:
         from pipeline_autonomo_pro import executar_esteira_completa
         try:
             clean = bool(getattr(a, "rebuild_clean", False) or a.cmd == "rebuild-total")
+            jobs = 1 if getattr(a, "serial", False) else max(1, getattr(a, "jobs", 1))
             return executar_esteira_completa(a.slug, a.planejar, clean_rebuild=clean,
                                              resume=getattr(a, "resume", None),
                                              isolado=getattr(a, "isolado", False),
-                                             cache=not getattr(a, "sem_cache", False))
+                                             cache=not getattr(a, "sem_cache", False),
+                                             jobs=jobs)
         except (ValueError, RuntimeError, OSError) as exc:
             print(f"ERRO: {exc}", file=sys.stderr)
             return 1
@@ -1789,6 +1819,8 @@ def main(argv=None) -> int:
         return cmd_etapas(a.slug)
     if a.cmd == "cache":
         return cmd_cache(a.slug, getattr(a, "limpar", False))
+    if a.cmd == "dag":
+        return cmd_dag(a.slug)
     if a.cmd == "cerebro":
         return cmd_cerebro()
     if a.cmd == "sincronia":

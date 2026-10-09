@@ -18,6 +18,7 @@ Todo arquivo `ferramentas/*.py` precisa aparecer aqui (um teste reprova módulo 
 | `vx/checkpoint.py` | retomada (`--resume`): decide pular/rodar cada etapa com prova tripla (concluído + entradas iguais + saídas no lugar). Falha fechada: na dúvida, roda. Grava `_checkpoint.json` por `run_id`. Decisão 006 |
 | `vx/runner.py` | executa uma etapa in-process (`estudio.main(argv)`), com a saída espelhada no log da etapa; converte o `SystemExit` do `estudio.py` em `ErroDeEtapa` (não pode matar a esteira) e preserva cwd/stdout. `--isolado` volta ao subprocess. Decisão 007 |
 | `vx/cache.py` | cache por hash de entrada com escopo de PROJETO (sobrevive entre execuções): reaproveita a etapa em vez de chamá-la, com as mesmas três provas do checkpoint. `hash_obj` é o hash canônico (substitui 6 cópias ad-hoc). Guarda variações (voltar a uma entrada antiga volta a reaproveitar). Decisão 008 |
+| `vx/dag.py` | grafo de dependências derivado de `vx/etapas.py`: ondas paralelizáveis + corrente serial obrigatória para quem escreve `timeline.json`. `validar()` reprova ciclo/onda insegura; `ordem_topologica()` é o caminho serial; `diagnosticar()`/`ganho_estimado()` alimentam `estudio.py dag`. Decisão 009 |
 | `ferramentas/_vx.py` | ponte para os módulos de `ferramentas/` importarem `vx/` |
 
 ## Orquestração e portas

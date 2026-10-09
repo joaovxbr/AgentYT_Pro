@@ -2,6 +2,10 @@
 
 Porta publica: estudio.py esteira <slug> [--planejar].
 Nao publica, nao altera o master aprovado e nao chama APIs de imagem.
+
+Execucao: as etapas rodam em serie por padrao. `--jobs N` liga as ondas do
+grafo (`vx/dag.py`): etapas que so LEEM entradas diferentes rodam ao mesmo
+tempo, e as que escrevem `timeline.json` continuam estritamente em fila.
 """
 import sys
 import subprocess
@@ -10,6 +14,8 @@ import re
 import shutil
 import os
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from datetime import datetime, timezone
 from dataclasses import asdict
@@ -28,6 +34,7 @@ from vx import metrics as vx_metrics  # noqa: E402
 from vx import checkpoint as vx_checkpoint  # noqa: E402
 from vx import runner as vx_runner  # noqa: E402
 from vx import cache as vx_cache  # noqa: E402
+from vx import dag as vx_dag  # noqa: E402
 ambiente.garantir_path()
 
 def quantizar_cortes(tempos, fps=30):
@@ -173,7 +180,7 @@ def executar_passo(cmd, titulo, log_path=None):
                            stderr=subprocess.STDOUT, check=True)
 
 def executar_esteira_completa(slug, planejar=False, clean_rebuild=False, resume=None,
-                              isolado=False, cache=True):
+                              isolado=False, cache=True, jobs=1):
     if planejar:
         check = preflight(slug, permitir_bootstrap=not clean_rebuild)
         pend = pendencias_bootstrap(slug) if not clean_rebuild else []
@@ -212,7 +219,7 @@ def executar_esteira_completa(slug, planejar=False, clean_rebuild=False, resume=
               "nao existe mais)", flush=True)
     try:
         return _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info, resume=resume,
-                                  isolado=isolado, cache=cache)
+                                  isolado=isolado, cache=cache, jobs=jobs)
     finally:
         vx_lock.liberar(lock, run_id)
 
@@ -259,8 +266,91 @@ def _planejar_resume(slug, resume, clean_rebuild) -> dict:
             "motivo": "checkpoint valido para as etapas listadas em a_pular"}
 
 
+def _executar_fases_em_ondas(step, plano, ordem_serial, *, jobs=1, ja_prontas=None):
+    """Roda bootstrap+producao respeitando o grafo (`vx/dag.py`).
+
+    `plano` mapeia nome -> (args, guarda, bloqueante). `guarda` e uma funcao
+    opcional que responde "a etapa ainda precisa rodar?" (as de bootstrap usam
+    "se_ausente"); `None` significa "sempre que chegar a vez". `ja_prontas` marca
+    a etapa como satisfeita de saida -- nesse caso ela e pulada como hoje faz o
+    `if not stems.is_file()`.
+
+    `step(nome, args, bloqueante=...)` e o executor real (resume, cache,
+    metricas, checkpoint).
+
+    **serial (`jobs <= 1`)**: segue `ordem_serial` exatamente -- a esteira de
+    sempre, sem consultar o grafo.
+    **ondas (`jobs > 1`)**: grafo montado do registro e validado; falha fechada
+    para serial se a validacao reprovar (ciclo, onda insegura). Etapas com guarda
+    satisfeito sao puladas -- igual a hoje.
+    """
+    ja_prontas = dict(ja_prontas or {})
+
+    def _esta_pronta(nome):
+        if ja_prontas.get(nome):
+            return True
+        _args, guarda, _bl = plano[nome]
+        return bool(guarda()) if guarda is not None else False
+
+    if jobs <= 1:
+        for nome in ordem_serial:
+            if nome not in plano or _esta_pronta(nome):
+                continue
+            args, _guarda, bloqueante = plano[nome]
+            step(nome, args, bloqueante=bloqueante)
+        return
+
+    # -- ondas -----------------------------------------------------------------
+    fases = set(ordem_serial)
+    g = vx_dag.construir()
+    problemas = vx_dag.validar(g, vx_etapas.nomes())
+    if problemas:
+        print("[ESTEIRA] grafo invalido, caindo para serial: " + "; ".join(problemas),
+              flush=True)
+        for nome in ordem_serial:
+            if nome not in plano or _esta_pronta(nome):
+                continue
+            args, _g, bl = plano[nome]
+            step(nome, args, bloqueante=bl)
+        return
+
+    ondas = [[n for n in onda if n in fases] for onda in g.ondas(vx_etapas.nomes())]
+    ondas = [o for o in ondas if o]
+    print(f"[ESTEIRA] fases 1-4 em {len(ondas)} onda(s), ate {jobs} etapa(s) em "
+          f"paralelo (vx/dag.py)", flush=True)
+    for i, onda in enumerate(ondas, 1):
+        a_rodar = [n for n in onda if n in plano and not _esta_pronta(n)]
+        if not a_rodar:
+            continue
+        erros: list[BaseException] = []
+
+        def _rodar(nome):
+            args, _g, bloqueante = plano[nome]
+            try:
+                step(nome, args, bloqueante=bloqueante)
+            except BaseException as exc:
+                # `step` ja trata a etapa informativa internamente; se chegou
+                # aqui era bloqueante e as etapas seguintes nao devem rodar.
+                if bloqueante:
+                    erros.append(exc)
+
+        if len(a_rodar) == 1:
+            _rodar(a_rodar[0])
+            if erros:
+                raise erros[0]
+            continue
+        print(f"[ESTEIRA] onda {i} ({len(a_rodar)} em paralelo): " + ", ".join(a_rodar),
+              flush=True)
+        with ThreadPoolExecutor(max_workers=min(jobs, len(a_rodar)),
+                                thread_name_prefix="etapa") as pool:
+            for f in [pool.submit(_rodar, n) for n in a_rodar]:
+                f.result()
+        if erros:
+            raise erros[0]
+
+
 def _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info, resume=None,
-                       isolado=False, cache=True):
+                       isolado=False, cache=True, jobs=1):
     # Cache por hash de entrada (vx/cache.py) -- escopo do PROJETO, sobrevive entre
     # execucoes. `--rebuild-clean` desliga: o pedido explicito e refazer tudo do zero,
     # e reaproveitar por baixo dos panos contradiria a intencao do operador.
@@ -346,6 +436,16 @@ def _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info, resume=None,
 
     try:
         salvar_json(report_path, report)
+        # Guarda o estado compartilhado (report/metricas/checkpoint) quando as
+        # etapas rodam em paralelo (--jobs). Em serie o lock nunca fica disputado:
+        # custo zero. O lock NAO cobre a execucao da etapa, so a contabilidade.
+        lock_exec = threading.Lock()
+        # indice estavel por etapa para o nome do log: usar len(report["etapas"])
+        # seria uma corrida (duas etapas pegariam o mesmo numero).
+        log_indice: dict[str, int] = {}
+        for i, nome in enumerate(vx_etapas.nomes(), 1):
+            log_indice[nome] = i
+
         def step(name, args, bloqueante=True):
             # --resume: pula a etapa so se o checkpoint PROVAR que ela ja rodou com
             # as mesmas entradas e que as saidas estao no lugar (vx/checkpoint.py).
@@ -354,16 +454,17 @@ def _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info, resume=None,
                 if reg is not None:
                     decisao = checkpoint.pode_pular(name, reg.le, reg.escreve)
                     if decisao.pular:
-                        item = {"nome": name, "status": vx_metrics.STATUS_PULADA,
-                                "resume": decisao.motivo}
-                        report["etapas"].append(item)
-                        metricas.etapa_inicio(name)
-                        metricas.etapa_pulada(name, motivo=decisao.motivo)
-                        metricas.gravar(metricas_path)
-                        report["metricas"] = metricas.resumo()
-                        salvar_json(report_path, report)
-                        checkpoint.registrar_pulado(name, decisao.motivo)
-                        checkpoint.gravar(checkpoint_path)
+                        with lock_exec:
+                            item = {"nome": name, "status": vx_metrics.STATUS_PULADA,
+                                    "resume": decisao.motivo}
+                            report["etapas"].append(item)
+                            metricas.etapa_inicio(name)
+                            metricas.etapa_pulada(name, motivo=decisao.motivo)
+                            metricas.gravar(metricas_path)
+                            report["metricas"] = metricas.resumo()
+                            salvar_json(report_path, report)
+                            checkpoint.registrar_pulado(name, decisao.motivo)
+                            checkpoint.gravar(checkpoint_path)
                         print(f"[ESTEIRA] {name}: PULADA ({decisao.motivo})", flush=True)
                         return
                     print(f"[ESTEIRA] {name}: roda de novo ({decisao.motivo})", flush=True)
@@ -378,30 +479,34 @@ def _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info, resume=None,
                     decisao_cache = vx_cache.pode_reaproveitar(
                         name, reg.le, reg.escreve, p, slug)
                     if decisao_cache.reaproveitar:
-                        evento = {"nome": name, "status": vx_metrics.STATUS_CACHE,
-                                  "cache": decisao_cache.motivo}
-                        report["etapas"].append(evento)
-                        metricas.etapa_inicio(name)
-                        metricas.etapa_cache(name, motivo=decisao_cache.motivo,
-                                             bytes_=decisao_cache.bytes)
-                        metricas.gravar(metricas_path)
-                        report["metricas"] = metricas.resumo()
-                        salvar_json(report_path, report)
-                        vx_cache.confirmar_uso(name, reg.le, p, slug)
-                        # A etapa esta "feita" nesta execucao: registra no checkpoint
-                        # tambem, para um --resume posterior nao a reavaliar a toa.
-                        checkpoint.registrar(name, padroes_le=reg.le,
-                                             padroes_escreve=reg.escreve,
-                                             status="concluido")
-                        checkpoint.gravar(checkpoint_path)
+                        with lock_exec:
+                            evento = {"nome": name, "status": vx_metrics.STATUS_CACHE,
+                                      "cache": decisao_cache.motivo}
+                            report["etapas"].append(evento)
+                            metricas.etapa_inicio(name)
+                            metricas.etapa_cache(name, motivo=decisao_cache.motivo,
+                                                 bytes_=decisao_cache.bytes)
+                            metricas.gravar(metricas_path)
+                            report["metricas"] = metricas.resumo()
+                            salvar_json(report_path, report)
+                            vx_cache.confirmar_uso(name, reg.le, p, slug)
+                            # A etapa esta "feita" nesta execucao: registra no
+                            # checkpoint tambem, para um --resume futuro nao a reavaliar.
+                            checkpoint.registrar(name, padroes_le=reg.le,
+                                                 padroes_escreve=reg.escreve,
+                                                 status="concluido")
+                            checkpoint.gravar(checkpoint_path)
                         print(f"[ESTEIRA] {name}: CACHE ({decisao_cache.motivo})", flush=True)
                         return
-            item = {"nome": name, "status": "executando"}
-            report["etapas"].append(item)
-            salvar_json(report_path, report)
-            metricas.etapa_inicio(name)
+            with lock_exec:
+                item = {"nome": name, "status": "executando"}
+                report["etapas"].append(item)
+                salvar_json(report_path, report)
+                metricas.etapa_inicio(name)
             t0 = time.perf_counter()
-            log_etapa = qa / f"{len(report['etapas']):02}_{name}.log"
+            # Log por etapa, com indice do REGISTRO (nao da lista de execucao):
+            # assim duas etapas em paralelo nunca escrevem no mesmo arquivo.
+            log_etapa = qa / f"{log_indice.get(name, 0):02}_{name}.log"
             try:
                 # In-process (vx/runner.py): a etapa roda neste processo em vez de um
                 # subprocess novo. Ganha-se o traceback real (metrics registra o tipo
@@ -413,66 +518,94 @@ def _executar_com_lock(slug, clean_rebuild, p, run_id, lock_info, resume=None,
                 # Era o unico erro tratado de etapa: reprovacao da etapa (exit != 0
                 # ou SystemExit do estudio.py). Aqui se decide reprovar ou so avisar.
                 duracao = time.perf_counter() - t0
+                with lock_exec:
+                    if bloqueante:
+                        item["status"] = "falhou"
+                        metricas.etapa_fim(name, status=vx_metrics.STATUS_FALHOU,
+                                           duracao_s=duracao,
+                                           erro=f"exit {exc.codigo}",
+                                           origem_erro="vx_runner.ErroDeEtapa")
+                        metricas.gravar(metricas_path)
+                        report["metricas"] = metricas.resumo()
+                        salvar_json(report_path, report)
+                    else:
+                        # etapa informativa: registra e segue (contrato do registro)
+                        item["status"] = "aviso"
+                        metricas.etapa_fim(name, status=vx_metrics.STATUS_AVISO,
+                                           duracao_s=duracao,
+                                           erro=f"exit {exc.codigo}",
+                                           origem_erro="vx_runner.ErroDeEtapa")
+                        metricas.gravar(metricas_path)
+                        report["metricas"] = metricas.resumo()
+                        salvar_json(report_path, report)
                 if bloqueante:
-                    item["status"] = "falhou"
-                    metricas.etapa_fim(name, status=vx_metrics.STATUS_FALHOU,
-                                       duracao_s=duracao,
-                                       erro=f"exit {exc.codigo}",
-                                       origem_erro="vx_runner.ErroDeEtapa")
-                    metricas.gravar(metricas_path)
-                    report["metricas"] = metricas.resumo()
-                    salvar_json(report_path, report)
                     raise
-                # etapa informativa: registra e segue (contrato do registro)
-                item["status"] = "aviso"
-                metricas.etapa_fim(name, status=vx_metrics.STATUS_AVISO,
-                                   duracao_s=duracao,
-                                   erro=f"exit {exc.codigo}",
-                                   origem_erro="vx_runner.ErroDeEtapa")
-                metricas.gravar(metricas_path)
-                report["metricas"] = metricas.resumo()
-                salvar_json(report_path, report)
                 return
             except BaseException as exc:
                 duracao = time.perf_counter() - t0
-                item["status"] = "falhou"
-                metricas.etapa_fim(name, status=vx_metrics.STATUS_FALHOU,
-                                   duracao_s=duracao, erro=exc,
-                                   origem_erro=type(exc).__name__)
+                with lock_exec:
+                    item["status"] = "falhou"
+                    metricas.etapa_fim(name, status=vx_metrics.STATUS_FALHOU,
+                                       duracao_s=duracao, erro=exc,
+                                       origem_erro=type(exc).__name__)
+                    metricas.gravar(metricas_path)
+                    report["metricas"] = metricas.resumo()
+                    salvar_json(report_path, report)
+                raise
+            with lock_exec:
+                item["status"] = "concluido"
+                metricas.etapa_fim(name, status=vx_metrics.STATUS_CONCLUIDO,
+                                   duracao_s=time.perf_counter() - t0,
+                                   saidas=_saidas_da_etapa(name))
                 metricas.gravar(metricas_path)
+                # checkpoint: a etapa terminou OK -- guarda entradas/saidas do momento
+                # para que um `--resume` futuro saiba se ainda pode pular esta etapa.
+                _registrar_checkpoint(name)
+                # cache: guarda entradas/saidas com escopo de PROJETO, para que uma
+                # execucao FUTURA (outro run_id) reaproveite sem nem chamar a etapa.
+                reg = vx_etapas.POR_NOME.get(name)
+                if cache_ativo and reg is not None and reg.cacheavel:
+                    vx_cache.registrar(name, reg.le, reg.escreve, p, slug)
                 report["metricas"] = metricas.resumo()
                 salvar_json(report_path, report)
-                raise
-            item["status"] = "concluido"
-            metricas.etapa_fim(name, status=vx_metrics.STATUS_CONCLUIDO,
-                               duracao_s=time.perf_counter() - t0,
-                               saidas=_saidas_da_etapa(name))
-            metricas.gravar(metricas_path)
-            # checkpoint: a etapa terminou OK -- guarda entradas/saidas do momento para
-            # que um `--resume` futuro saiba se ainda pode pular esta etapa.
-            _registrar_checkpoint(name)
-            # cache: guarda entradas/saidas com escopo de PROJETO, para que uma
-            # execucao FUTURA (outro run_id) reaproveite sem nem chamar a etapa.
-            reg = vx_etapas.POR_NOME.get(name)
-            if cache_ativo and reg is not None and reg.cacheavel:
-                vx_cache.registrar(name, reg.le, reg.escreve, p, slug)
-            report["metricas"] = metricas.resumo()
-            salvar_json(report_path, report)
 
         audio = vx_projeto.audio(p)
         stems_dir = vx_projeto.stems_dir(p)
         stems = vx_projeto.stems(p)
-        if not all(x.is_file() and x.stat().st_size for x in stems):
-            step("stems", ["stems", str(audio), "--saida", str(stems_dir)])
-            if not all(x.is_file() and x.stat().st_size for x in stems):
-                raise RuntimeError("Demucs nao entregou os quatro stems")
         transcription = p / "entradas" / "transcricao.json"
-        if not transcription.is_file():
-            step("transcrever", ["transcrever", slug, "--modelo", "large-v3"])
-        # auditar-letra primeiro: letra que nao bate com o audio (verso pulado,
-        # bloco reordenado, voz sem transcricao) falha ANTES de gastar render.
-        for etapa in vx_etapas.PRODUCAO:
-            step(etapa.nome, [etapa.nome, slug, *etapa.args], bloqueante=etapa.bloqueante)
+
+        # Plano de execucao das fases 1-4 (bootstrap + producao). Cada entrada diz
+        # COMO chamar a etapa e SE ela deve rodar (guarda "se_ausente": so entra se
+        # a saida faltar). Reunir as duas fases num plano unico e o que permite o
+        # paralelismo REAL: as ondas uteis do grafo cruzam as fases
+        # (`stems` || `fonte-limpa`, `sincronizar` || `auditar-letra`). Paralelizar
+        # so a producao nao renderia nada -- ela e praticamente uma cadeia.
+        #
+        # So `stems` e `transcrever` passam por `step` aqui: `sincronizar` e
+        # `timeline` ja rodaram no bootstrap/preflight acima E NAO tem guarda
+        # idempotente propria para rodar de novo sem custo.
+        def _stems_disponiveis():
+            return all(x.is_file() and x.stat().st_size for x in stems)
+
+        plano = {
+            "stems": (["stems", str(audio), "--saida", str(stems_dir)],
+                      None, True),
+            "transcrever": (["transcrever", slug, "--modelo", "large-v3"],
+                            None, True),
+        }
+        for e in vx_etapas.PRODUCAO:
+            plano[e.nome] = ([e.nome, *e.args], None, e.bloqueante)
+
+        # Ordem serial de SEMPRE: stems -> transcrever -> producao (a ordem do
+        # registro). Sem `sincronizar`/`timeline`: eles sao do bootstrap.
+        ordem_serial = ["stems", "transcrever"] + [e.nome for e in vx_etapas.PRODUCAO]
+
+        _executar_fases_em_ondas(
+            step, plano, ordem_serial, jobs=jobs,
+            ja_prontas={"stems": _stems_disponiveis(), "transcrever": transcription.is_file()},
+        )
+        if not _stems_disponiveis():
+            raise RuntimeError("Demucs nao entregou os quatro stems")
         if composicao and composicao.get("modo") != "legado":
             vx_composicao.registrar_composicao(p)
         body = candidate_dir / f"{slug}_corpo.mp4"
@@ -556,7 +689,15 @@ if __name__ == "__main__":
     parser.add_argument("--sem-cache", action="store_true",
                         help="ignora o cache por hash entre execucoes (refaz toda etapa "
                              "cacheavel); --rebuild-clean ja implica isso")
+    parser.add_argument("--jobs", type=int, default=1, metavar="N",
+                        help="roda a fase de producao em ondas, ate N etapas em paralelo "
+                             "(vx/dag.py). Padrao 1 = serial, a esteira de sempre. As "
+                             "etapas que escrevem timeline.json nunca rodam juntas.")
+    parser.add_argument("--serial", action="store_true",
+                        help="forca execucao serial (equivalente a --jobs 1); explicito "
+                             "para quem nao quer depender do default")
     args = parser.parse_args()
+    jobs = 1 if args.serial else max(1, args.jobs)
     sys.exit(executar_esteira_completa(args.slug, args.planejar, args.rebuild_clean,
                                       resume=args.resume, isolado=args.isolado,
-                                      cache=not args.sem_cache))
+                                      cache=not args.sem_cache, jobs=jobs))

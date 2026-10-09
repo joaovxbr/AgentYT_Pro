@@ -114,5 +114,149 @@ class EtapaInformativaTests(unittest.TestCase):
             self.assertFalse((p / ".esteira.lock").exists())
 
 
+class ProducaoEmOndasTests(unittest.TestCase):
+    """Fase 5: fases 1-4 em ondas (vx/dag.py) -- sem tocar no resto."""
+
+    ORDEM = ["stems", "transcrever"] + [e.nome for e in vx_etapas.PRODUCAO]
+
+    def _plano(self, nomes=None):
+        nomes = nomes if nomes is not None else self.ORDEM
+        return {n: ([n], None, vx_etapas.POR_NOME[n].bloqueante
+                    if n in vx_etapas.POR_NOME else True) for n in nomes}
+
+    def _step_falso(self):
+        chamadas = []
+
+        def step(nome, args, bloqueante=True):
+            chamadas.append(nome)
+
+        return chamadas, step
+
+    def test_jobs_1_e_a_ordem_do_registro(self):
+        chamadas, step = self._step_falso()
+        pipeline._executar_fases_em_ondas(step, self._plano(), self.ORDEM, jobs=1)
+        self.assertEqual(chamadas, self.ORDEM)
+
+    def test_jobs_1_nao_consulta_o_grafo(self):
+        """Serial nao pode depender do DAG: e a esteira de sempre."""
+        chamadas, step = self._step_falso()
+        with patch.object(pipeline.vx_dag, "construir",
+                          side_effect=AssertionError("nao devia montar o grafo")):
+            pipeline._executar_fases_em_ondas(step, self._plano(), self.ORDEM, jobs=1)
+        self.assertEqual(chamadas, self.ORDEM)
+
+    def test_jobs_maior_roda_todas_as_etapas_uma_vez(self):
+        chamadas, step = self._step_falso()
+        pipeline._executar_fases_em_ondas(step, self._plano(), self.ORDEM, jobs=4)
+        self.assertEqual(sorted(chamadas), sorted(self.ORDEM))
+
+    def test_etapa_ja_pronta_e_pulada(self):
+        """Guarda 'se_ausente': stems/transcrever pulados quando a saida ja existe."""
+        chamadas, step = self._step_falso()
+        ja = {"stems": True, "transcrever": True}
+        pipeline._executar_fases_em_ondas(step, self._plano(), self.ORDEM, jobs=1,
+                                         ja_prontas=ja)
+        self.assertNotIn("stems", chamadas)
+        self.assertNotIn("transcrever", chamadas)
+        self.assertEqual(chamadas, [e.nome for e in vx_etapas.PRODUCAO])
+
+    def test_paralelismo_real_no_primeiro_par(self):
+        """`stems` e `fonte-limpa` sao a primeira onda verdadeiramente paralela."""
+        import threading
+        import time as _t
+        ativos = []
+        pico = [0]
+        lock = threading.Lock()
+
+        def step(nome, args, bloqueante=True):
+            with lock:
+                ativos.append(nome)
+                pico[0] = max(pico[0], len(ativos))
+            _t.sleep(0.02)
+            with lock:
+                ativos.remove(nome)
+
+        pipeline._executar_fases_em_ondas(step, self._plano(), self.ORDEM, jobs=4)
+        self.assertGreater(pico[0], 1, "nenhuma etapa rodou em paralelo")
+
+    def test_composicao_nunca_roda_em_paralelo(self):
+        """A invariante que protege o timeline.json, agora no orquestrador."""
+        import threading
+        lock = threading.Lock()
+        ativos: list[str] = []
+        pares: list[tuple[str, str]] = []
+
+        def step(nome, args, bloqueante=True):
+            with lock:
+                for x in ativos:
+                    pares.append((x, nome))
+                ativos.append(nome)
+            import time as _t
+            _t.sleep(0.002)
+            with lock:
+                ativos.remove(nome)
+
+        pipeline._executar_fases_em_ondas(step, self._plano(), self.ORDEM, jobs=8)
+        composicao = vx_dag_corrente()
+        for a, b in pares:
+            self.assertFalse(a in composicao and b in composicao,
+                             f"duas etapas de composicao em paralelo: {a} + {b}")
+
+    def test_fases_1_4_tem_onda_paralela_de_verdade(self):
+        """`stems` || `fonte-limpa`: a onda util cruza bootstrap e producao."""
+        from vx import dag as _d
+        g = _d.construir()
+        ondas = g.ondas(vx_etapas.nomes())
+        primeira = ondas[0]
+        self.assertEqual(set(primeira), {"stems", "fonte-limpa"})
+
+    def test_grafo_invalido_cai_para_serial(self):
+        chamadas, step = self._step_falso()
+        with patch.object(pipeline.vx_dag, "validar",
+                          return_value=["ciclo: a -> b -> a"]):
+            pipeline._executar_fases_em_ondas(step, self._plano(), self.ORDEM, jobs=4)
+        self.assertEqual(chamadas, self.ORDEM)
+
+    def test_falha_bloqueante_propaga(self):
+        def step(nome, args, bloqueante=True):
+            if nome == "auditar-letra":
+                raise pipeline.vx_runner.ErroDeEtapa("exit 1", codigo=1, etapa=nome)
+
+        with self.assertRaises(pipeline.vx_runner.ErroDeEtapa):
+            pipeline._executar_fases_em_ondas(step, self._plano(), self.ORDEM, jobs=4)
+
+    def test_falha_informativa_nao_interrompe_a_onda(self):
+        """Etapa nao bloqueante que falha: `step` registra aviso e volta."""
+        vistos = []
+
+        def step(nome, args, bloqueante=True):
+            vistos.append(nome)
+            if nome == "auditar-ritmo":
+                self.assertFalse(bloqueante, "auditar-ritmo deveria ser informativa")
+                return
+
+        pipeline._executar_fases_em_ondas(step, self._plano(), self.ORDEM, jobs=4)
+        self.assertIn("auditar-ritmo", vistos)
+        self.assertEqual(sorted(vistos), sorted(self.ORDEM))
+
+    def test_etapa_informativa_nao_aborta_a_onda_mesmo_se_step_relancar(self):
+        """Rede de seguranca: `step` mal comportado numa etapa informativa nao
+        pode derrubar a onda."""
+        vistos = []
+
+        def step(nome, args, bloqueante=True):
+            vistos.append(nome)
+            if nome == "auditar-ritmo":
+                raise pipeline.vx_runner.ErroDeEtapa("exit 1", codigo=1, etapa=nome)
+
+        pipeline._executar_fases_em_ondas(step, self._plano(), self.ORDEM, jobs=4)
+        self.assertEqual(sorted(vistos), sorted(self.ORDEM))
+
+
+def vx_dag_corrente():
+    from vx import dag as _d
+    return set(_d.construir().corrente)
+
+
 if __name__ == "__main__":
     unittest.main()

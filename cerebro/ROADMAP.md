@@ -110,9 +110,13 @@ Gojo (`projetos/gojo_infinito`) passando na esteira.
     6 etapas cacheáveis não são chamadas, com invalidação precisa (mudar a letra derruba só o
     que depende dela). Testes: `tests/test_cache.py` (28).
 
-- **Próxima fase do plano de robustez (não feita):** 5) *DAG + paralelismo* — o grafo já está
-  declarado em `vx/etapas.py -> le/escreve`, e as etapas agora são chamáveis no mesmo processo
-  (Fase 3), que é o que faltava para montar o grafo.
+- **Plano de robustez concluído (fases 0–5):** 1) suíte verde + versionamento + `vx/metrics.py`
+  (decisão 005); 2) retomada por checkpoint `--resume` (`vx/checkpoint.py`, decisão 006);
+  3) etapas in-process (`vx/runner.py`, decisão 007); 4) cache por hash de entrada
+  (`vx/cache.py`, decisão 008); 5) DAG + paralelismo (`vx/dag.py`, `--jobs N`, decisão 009).
+  A esteira é serial por construção (7 das 18 etapas editam `timeline.json`); o grafo entrega
+  as 3 ondas que existem de verdade e, principalmente, **prova** que ninguém lê o
+  `timeline.json` no meio de uma edição. `estudio.py dag` mostra o plano.
 
 - Legenda ativa: `legenda`, `sincronizar`, `karaoke`, o porteiro de sincronia, o `pov --karaoke` e o `relatorio` (`qa.py`) usam `_ass_ativo` = `projeto.json -> legenda_ass`. `karaoke` e `legenda` gravavam em `legendas/<slug>.ass` fixo (render queimava a legenda antiga se o manifesto apontasse outro arquivo). Variantes de estilo (`legendas-mugen`, `legenda-palavra`, `legenda-neon`) gravam em arquivo próprio de propósito e não são queimadas. Teste: `tests/test_legenda_ativa.py`.
 - Requirements: um só, `requerimentos.txt` na raiz, fixado nas versões do `.venv` real (Python 3.10, numpy 2.2.6, torch 2.5.1+cu121). O antigo requirements.txt de ferramentas (Python 3.11, numpy 2.4.6) foi removido. Teste em `tests/test_cerebro.py` reprova segundo arquivo ou versão solta.
