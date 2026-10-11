@@ -4,7 +4,7 @@
   "largura": 1920,
   "altura": 1080,
   "recorte": {"modelo": "u2net", "lado": 512, "suavizacao": 0.55, "feather": 3},
-  "plate": {"escurecer": 0.72, "saturacao": 0.82, "push_in": 0.05, "sujeito_brilho": 0.96},
+  "plate": {"escurecer": 0.60, "saturacao": 0.82, "push_in": 0.05, "sujeito_brilho": 1.02},
   "tracking": {"fator": 0.6, "suavizacao": 0.8, "max_px": 80},
   "grao": 0.03,
   "vinheta": 0.35,
@@ -13,9 +13,12 @@
     "apoio": "ferramentas/fontes/BebasNeue-Regular.ttf",
     "glitch": "ferramentas/fontes/BlackOpsOne-Regular.ttf",
     "maquina": "ferramentas/fontes/FjallaOne-Regular.ttf",
-    "kanji": "C:/Windows/Fonts/YuGothB.ttc"
+    "kanji": "C:/Windows/Fonts/YuGothB.ttc",
+    "decorativa": "ferramentas/fontes/CinzelDecorative-Bold.ttf",
+    "russo": "ferramentas/fontes/RussoOne-Regular.ttf"
   },
   "kanji": {
+    "dez sombras": "十種影法術", "shikigami": "式神", "lobo": "玉犬", "mahoraga": "魔虚羅",
     "infinito": "無限", "infinita": "無限", "vazio": "虚", "roxo": "紫", "purple": "紫",
     "azul": "蒼", "vermelho": "赫", "dominio": "領域", "olhos": "六眼", "forte": "最強",
     "mais forte": "最強", "morte": "死", "sangue": "血", "poder": "力", "deus": "神",

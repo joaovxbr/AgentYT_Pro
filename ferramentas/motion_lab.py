@@ -41,7 +41,7 @@ CFG_ARQ = RAIZ / "assets" / "design" / "motion_lab.json"
 PADRAO = {
     "fps": 30, "largura": 1920, "altura": 1080,
     "recorte": {"modelo": "u2net", "lado": 512, "suavizacao": 0.55, "feather": 3},
-    "plate": {"escurecer": 0.72, "saturacao": 0.82, "push_in": 0.05, "sujeito_brilho": 0.96},
+    "plate": {"escurecer": 0.60, "saturacao": 0.82, "push_in": 0.05, "sujeito_brilho": 1.02},
     "tracking": {"fator": 0.6, "suavizacao": 0.8, "max_px": 80},
     "grao": 0.03, "vinheta": 0.35,
     "fontes": {
@@ -50,6 +50,8 @@ PADRAO = {
         "glitch": "ferramentas/fontes/BlackOpsOne-Regular.ttf",
         "maquina": "ferramentas/fontes/FjallaOne-Regular.ttf",
         "kanji": "C:/Windows/Fonts/YuGothB.ttc",
+        "decorativa": "ferramentas/fontes/CinzelDecorative-Bold.ttf",
+        "russo": "ferramentas/fontes/RussoOne-Regular.ttf",
     },
     "kanji": {}, "kanji_padrao": "力", "cores": {},
     "estilos": ["atras_personagem", "palavra_por_palavra", "glitch_slice",
@@ -476,7 +478,7 @@ def estilo_atras_personagem(c: Contexto, t: float, i: int, off):
         return None, None
     palavra, ini, fim = jp
     f = _ajustar(palavra, c.f["impacto"], int(c.W * 0.92), int(c.H * 0.62))
-    layer = _texto(palavra, f, cor=(245, 245, 250), glow=c.acento, glow_r=22)
+    layer = _texto(palavra, f, cor=(245, 245, 250), stroke=7, stroke_cor=(6, 8, 14), glow=c.acento, glow_r=28)
     prog = ease_out((t - ini) / 0.55)
     if prog <= 0:
         return None, None
@@ -703,7 +705,8 @@ def estilo_impacto_zoom(c: Contexto, t: float, i: int, off):
     dt = t - ini
     if dt < 0:
         return None, None
-    f = _ajustar(palavra, c.f["impacto"], int(c.W * 0.84), int(c.H * 0.46))
+    f_punch = c.f.get("russo") or c.f["impacto"]
+    f = _ajustar(palavra, f_punch, int(c.W * 0.84), int(c.H * 0.46))
     queda = ease_out(dt / 0.16)
     esc = min(2.4, 3.0 - 2.0 * queda) if dt < 0.16 else 1.0 + 0.03 * (dt - 0.16)
     lay = _texto(palavra, f, cor=(255, 255, 255), stroke=6, stroke_cor=(4, 4, 8), glow=c.acento, glow_r=20)
@@ -933,8 +936,9 @@ def _entrada_card(c: "Contexto", t: float, frente: Image.Image) -> Image.Image:
 
 def _titulo_card(c: "Contexto", palavra: str, prog: float, fade: float, largura: float = 0.8,
                  altura: float = 0.34) -> Image.Image:
-    f = _ajustar(palavra, c.f["impacto"], int(c.W * largura), int(c.H * altura))
-    lay = _texto(palavra, f, cor=(250, 248, 244), stroke=3, stroke_cor=(6, 6, 8), glow=c.acento, glow_r=24,
+    fonte_usar = c.f.get("decorativa") or c.f["impacto"]
+    f = _ajustar(palavra, fonte_usar, int(c.W * largura), int(c.H * altura))
+    lay = _texto(palavra, f, cor=(250, 248, 244), stroke=6, stroke_cor=(6, 6, 8), glow=c.acento, glow_r=26,
                  alpha=int(255 * min(1.0, prog * 1.4) * fade))
     return _escalar(lay, 1.12 - 0.12 * ease_out(prog))
 
@@ -974,6 +978,16 @@ def estilo_card_cena_escura(c: Contexto, t: float, i: int, off):
     regua = _regua(c, int(c.W * 0.14), prog, fade)
     _colar(frente, regua, c.W / 2 - cred.width / 2 - regua.width / 2 - 24, c.H * 0.66)
     _colar(frente, regua, c.W / 2 + cred.width / 2 + regua.width / 2 + 24, c.H * 0.66)
+    kj = kanji_para(palavra, c.cfg.get("kanji") or {}, "")
+    if kj and c.f.get("kanji"):
+        try:
+            fk = _fonte(c.f["kanji"], 68)
+            kj_txt = "\n".join(list(kj))
+            kj_lay = _texto(kj_txt, fk, cor=(245, 250, 255), stroke=2, stroke_cor=(6, 10, 18),
+                            glow=c.acento, glow_r=16, alpha=int(220 * min(1.0, prog * 1.4) * fade))
+            _colar(frente, kj_lay, int(c.W * 0.91), c.H * 0.50)
+        except Exception:
+            pass
     return None, _entrada_card(c, t, frente)
 
 

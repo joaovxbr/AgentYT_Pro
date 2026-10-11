@@ -1,5 +1,6 @@
 {
   "_doc": "Config do gerador de imagens (API externa e ComfyUI SDXL local). Nada aqui e especifico de personagem; identidade vem do projeto.json -> imagem_ia.",
+  "usar_api_externa": false,
   "api_endpoint": "http://localhost:20128/v1/images/generations",
   "api_key": "sk-627a2cf873492111-alf4nj-e2e084bc",
   "api_model": "ag/gemini-3.1-flash-image",

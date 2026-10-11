@@ -397,8 +397,8 @@ def gerar(projeto_dir: Path, tipo: str = "capa", cena: Optional[str] = None,
             print(f"[VX IMAGE] cache: {destino.name}")
             saidas.append(destino)
             continue
-        # Tenta API externa configurada (se houver) antes do ComfyUI local
-        if cfg.get("api_endpoint"):
+        # Tenta API externa configurada (se habilitada e sem cliente injetado) antes do ComfyUI local
+        if cliente_padrao and cfg.get("usar_api_externa") and cfg.get("api_endpoint"):
             img_api = gerar_via_api_openai(cfg, positivo, largura, altura)
             if img_api is not None:
                 validar_imagem(img_api)
