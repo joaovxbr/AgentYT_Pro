@@ -88,7 +88,8 @@ def promover(slug: str, run_id: str) -> dict:
     candidato = Path(exe.get("saida") or d / "saidas" / "esteira" / run_id / f"{slug}_master_final_com_intro.mp4")
     if not candidato.is_file():
         raise FileNotFoundError(candidato)
-    master = d / m.get("master", f"saidas/{slug}_master.mp4")
+    rel_master = m.get("master") or f"saidas/{slug}_master.mp4"
+    master = d / rel_master
     master.parent.mkdir(parents=True, exist_ok=True)
     backup = None
     if master.is_file():
@@ -97,6 +98,10 @@ def promover(slug: str, run_id: str) -> dict:
         backup = bdir / f"{master.stem}_{datetime.now():%Y%m%dT%H%M%S}{master.suffix}"
         shutil.copy2(master, backup)
     shutil.copy2(candidato, master)
+    # Se o manifesto estava sem master definido, atualiza para o master promovido
+    if not m.get("master"):
+        m["master"] = str(master.relative_to(d)).replace("\\", "/")
+        (d / "projeto.json").write_text(json.dumps(m, indent=2, ensure_ascii=False), encoding="utf-8")
     reg = {"quando": datetime.now().isoformat(timespec="seconds"), "run_id": run_id,
            "candidato": str(candidato), "master": str(master.relative_to(d)), "sha": _sha(master),
            "backup_anterior": str(backup.relative_to(d)) if backup else None}
@@ -114,7 +119,8 @@ def conferir(d: Path, pacote: dict | None) -> dict[str, str]:
     m = _json(d / "projeto.json", {}) or {}
     saidas = d / "saidas"
     falta: dict[str, str] = {}
-    master = d / m.get("master", f"saidas/{slug}_master.mp4")
+    rel_master = m.get("master") or f"saidas/{slug}_master.mp4"
+    master = d / rel_master
     falta["master"] = "" if master.is_file() else f"master ausente ({master.relative_to(d)}): rode estudio.py promover"
     thumb = _thumb(d)
     if not thumb.is_file():
