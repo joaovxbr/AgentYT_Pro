@@ -932,6 +932,77 @@ def estilo_impacto_portal(c: Contexto, t: float, i: int, off):
     return atras, None
 
 
+def estilo_aura_eletrica(c: Contexto, t: float, i: int, off):
+    """Descargas eletricas / relampagos em zigue-zague contornando o personagem recortado + pulso forte no 808."""
+    from PIL import ImageChops
+    jp = c.janela_palavra(t)
+    if not jp:
+        return None, None
+    palavra, ini, fim = jp
+    prog = ease_out((t - ini + 0.1) / 0.45)
+    if prog <= 0:
+        return None, None
+    fade = _fade_saida(t, fim)
+    pulso = c.pulso(t)
+
+    atras = c.vazio()
+    frente = c.vazio()
+    cx, cy = c.W / 2 + off[0], c.H * 0.46 + off[1]
+
+    # Palavra de impacto com brilho elétrico
+    f = _ajustar(palavra, c.f["impacto"], int(c.W * 0.75), int(c.H * 0.4))
+    lay = _texto(palavra, f, cor=(255, 255, 255), stroke=4, stroke_cor=(10, 15, 30),
+                 glow=c.acento, glow_r=22, alpha=int(255 * prog * fade))
+    _colar(atras, lay, cx, cy)
+
+    # Raios e centelhas elétricas ao redor do personagem recortado
+    m = getattr(c, "mascara", None)
+    if m is not None and prog > 0:
+        pequeno = m.resize((c.W // 4, c.H // 4), Image.Resampling.BILINEAR).point(lambda p: 255 if p > 100 else 0)
+        borda = ImageChops.subtract(pequeno.filter(ImageFilter.MaxFilter(7)), pequeno)
+        borda = borda.resize((c.W, c.H), Image.Resampling.BILINEAR)
+
+        # Camada de aura base azulada/neon
+        forca = (0.6 + 0.6 * pulso) * prog * fade
+        a_base = borda.filter(ImageFilter.GaussianBlur(12)).point(lambda p: min(255, int(p * 1.5 * forca)))
+        aura = Image.new("RGBA", (c.W, c.H), (*c.acento, 0))
+        aura.putalpha(a_base)
+        atras = Image.alpha_composite(atras, aura)
+
+        # Descargas procedurais de raios em zigue-zague ao redor da borda
+        raios = Image.new("RGBA", (c.W, c.H), (0, 0, 0, 0))
+        dr = ImageDraw.Draw(raios)
+        n_raios = int(8 + 12 * pulso)
+        seed_frame = int(t * 24) * 31 + 7
+        rnd = random.Random(seed_frame)
+
+        cor_raio = (255, 255, 255)
+        for _ in range(n_raios):
+            # Ponto de origem próximo ao contorno central
+            ang = rnd.uniform(0, 2 * math.pi)
+            dist_base = rnd.uniform(c.H * 0.15, c.H * 0.45)
+            x_ini = cx + math.cos(ang) * dist_base * 0.6
+            y_ini = cy + math.sin(ang) * dist_base * 0.6
+
+            pts = [(x_ini, y_ini)]
+            passos = rnd.randint(4, 7)
+            tam_passo = rnd.uniform(25, 60)
+            curr_x, curr_y = x_ini, y_ini
+            for _ in range(passos):
+                curr_x += math.cos(ang) * tam_passo + rnd.uniform(-35, 35)
+                curr_y += math.sin(ang) * tam_passo + rnd.uniform(-35, 35)
+                pts.append((curr_x, curr_y))
+
+            alpha_raio = int(rnd.uniform(190, 255) * fade * prog)
+            dr.line(pts, fill=(*cor_raio, alpha_raio), width=rnd.randint(2, 4))
+
+        glow_raios = raios.filter(ImageFilter.GaussianBlur(6))
+        frente = Image.alpha_composite(frente, glow_raios)
+        frente = Image.alpha_composite(frente, raios)
+
+    return atras, frente
+
+
 # ---------------------------------------------------------------------------
 # Lote 3 (em teste): CARDS com fundo proprio — medidos na referencia MUGEN RAPS
 # (cerebro/referencias.md): 20 momentos graficos em 240 s; 13 sobre a cena
@@ -1256,6 +1327,7 @@ ESTILOS = {
     "letterbox_cinema": estilo_letterbox_cinema,
     "faiscas": estilo_faiscas,
     "impacto_portal": estilo_impacto_portal,
+    "aura_eletrica": estilo_aura_eletrica,
     # lote 3 (em teste no lab): cards com fundo proprio
     "card_cena_escura": estilo_card_cena_escura,
     "card_cenario": estilo_card_cenario,

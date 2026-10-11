@@ -131,6 +131,13 @@
       "descricao": "Portal dimensional de energia rotativa atras do personagem, pulsando no 808 com palavra de choque.",
       "quando_usar": "Batida forte, momentos de clímax místico ou revelação de poder no lab de testes.",
       "evitar": "Trechos sem batida marcada ou sem personagem recortado."
+    },
+    "aura_eletrica": {
+      "status": "em_teste", "tipo": "palavra", "camada": "tras+frente", "lote": 4,
+      "gatilhos": {"batida": 2, "atmosfera": 6},
+      "descricao": "Descargas eletricas e relampagos procedurais em zigue-zague contornando o personagem, pulsando no 808.",
+      "quando_usar": "Batida agressiva, tecnicas eletricas/raio ou momentos de furia e choque.",
+      "evitar": "Trechos sem personagem visivel ou cenas sem batida ritmica."
     }
   }
 }
