@@ -42,4 +42,4 @@
 
 ## Rejeitado / fora da produção
 - Overlay "chapado" de tipografia sobre a cena (sem recorte/tracking/plate): rejeitado (ficou colado/artificial). Substituído pelo motion sobre cena real (decisão 003).
-- SFX sintético no master (`legado/ferramentas/sfx_engine.py`): soa artificial sobre a mix.
+- SFX sintético no master: soa artificial sobre a mix (descontinuado).

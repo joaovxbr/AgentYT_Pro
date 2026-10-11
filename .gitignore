@@ -50,7 +50,6 @@ logs/
 backups/
 *.rar
 *.zip
-legado/**/*.bak_*
 *.bak_*
 
 # ---- Laboratorio (previa descartavel) ----

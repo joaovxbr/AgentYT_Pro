@@ -137,9 +137,3 @@ Todo arquivo `ferramentas/*.py` precisa aparecer aqui (um teste reprova módulo 
 | `publicacao_doc.py` | manual | `PUBLICACAO.md` |
 | `hook_retencao_shorts.py` | manual | overlay de gancho |
 | `cdp.py` | manual | Chrome DevTools (via publicar) |
-
-## Legado (fora da esteira, fase 5)
-Movidos para `legado/ferramentas/` em 2026-09-30 (backup zip em `backups/`); ninguém importava.
-Para reativar um: mover de volta para `ferramentas/`, catalogar acima e escrever teste.
-sfx_engine, suno_dl e mureka_dl (cópias ativas em `skills/downloadmusic/`), neon_overlay_fx,
-transicoes_vfx, autoteste, pov_cinematic_pro (+ seu teste em `legado/tests/`), `estudio.py.bak_vx_amv`.

@@ -62,11 +62,15 @@ Gojo (`projetos/gojo_infinito`) passando na esteira.
 - `cerebro/novo_modulo.md`: modelo de módulo, comando, `Etapa`, config, teste e checklist. Teste garante que o modelo compila.
 
 ## Sobras (quando mexer no arquivo)
-- Lógica que ainda está no `main()` do `estudio.py` (cenas-auto, graficos-auto…) → funções `cmd_*`.
 - `state.json` das etapas podem ser simplificados (hoje só cache dentro de uma execução).
 - Limiares internos de detecção (`imagem.py`: luz<24 etc., `scene_intelligence`) ainda no código.
 
 ## Dívidas resolvidas depois da fase 6
+- **Modularização de comandos do estúdio (2026-10-11, decisão 012) — concluída.**
+  40 comandos que executavam blocos procedurais inline no `main()` do `estudio.py`
+  foram extraídos para funções `cmd_*` dedicadas com tipagem e retorno padronizado.
+  O dispatcher em `main()` agora apenas valida e delega, preservando 100% dos contratos
+  CLI e do runner in-process. Suíte verde (618 testes).
 - **Robustez Fase 0+1 (2026-10-09, decisão 005) — concluída.** Plano de robustez aprovado
   pelo dono após análise completa do projeto (5 gargalos estruturais).
   - *Fase 0 — suíte verde + versionamento.* `tests/_fixtures.py` monta projetos temporários

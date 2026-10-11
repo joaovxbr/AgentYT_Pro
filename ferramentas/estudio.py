@@ -1473,6 +1473,385 @@ def cmd_avaliar(slug: str) -> int:
     return 0
 
 
+# Handlers dedicados para comandos anteriormente inline no main()
+
+def cmd_catalogar_cenas(slug: str, force: bool = False, interval: float = 1.0) -> int:
+    res = scene_intel_mod.catalogar_projeto(
+        dir_projeto(slug), force=force, sample_interval=interval)
+    resumo = {
+        "engine": "vx_scene_intelligence",
+        "slug": slug,
+        "clips_total": res.get("clips_total", 0),
+        "eligible_clips": res.get("eligible_clips", 0),
+        "scenes_total": res.get("scenes_total", 0),
+        "cache": res.get("cache", {}),
+        "errors": res.get("errors", []),
+    }
+    print(json.dumps(resumo, ensure_ascii=False, indent=2))
+    return 0 if not res.get("errors") else 1
+
+
+def cmd_cenas_auto(slug: str, planejar: bool = False, force_catalog: bool = False) -> int:
+    res = scene_match_mod.executar(
+        dir_projeto(slug), somente_planejar=planejar,
+        force_catalog=force_catalog)
+    resumo = {
+        "engine": "vx_semantic_scene_matcher",
+        "slug": slug,
+        "status": res.get("status"),
+        "applied": res.get("applied", False),
+        "matched_segments": res.get("matched_segments", 0),
+        "catalog": res.get("catalog", {}),
+        "sample_decisions": [{
+            "index": d.get("index"), "type": d.get("type"),
+            "text": d.get("text", ""), "clip": d.get("clip"),
+            "src": d.get("src"), "score": d.get("score"),
+            "concepts": d.get("concepts", []),
+            "scene_tags": d.get("scene_tags", [])
+        } for d in res.get("decisions", []) if d.get("status") == "matched"][:12],
+    }
+    print(json.dumps(resumo, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_chroma_auto(slug: str) -> int:
+    import chroma_auto as ch_mod
+    carregar_manifesto(slug)
+    res = ch_mod.executar(slug)
+    print(f"== chroma-auto {slug} == {res['status']}: {res['takes']} take(s) de tela verde recompostos")
+    for x in res.get("itens", []):
+        print(f"  {x['start']:.2f}-{x['end']:.2f}s  {x['fonte']}@{float(x['src']):.1f}s -> {x['take']}")
+    return 0
+
+
+def cmd_movimento(video: str) -> int:
+    res = mov_mod.analisar_fluxo_movimento(video)
+    print(json.dumps(res, indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_subgrave(audio: str) -> int:
+    evs = bass_mod.extrair_picos_subgrave(audio)
+    print(f"Total de impactos 808/sub-grave detectados: {len(evs)}")
+    print(json.dumps(evs[:10], indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_curadoria(video: str) -> int:
+    rel = cur_mod.auditar_clipe_completo(video)
+    print(json.dumps(rel, indent=2, ensure_ascii=False))
+    return 0 if rel.get("aprovado_para_esteira") else 1
+
+
+def cmd_impacto(palavra: str, subtexto: str = "", cor_aura: str | None = None) -> int:
+    p = Path(f"artes_impacto_{palavra.lower()}")
+    frames = imp_mod.gerar_sequencia_animacao_impacto(palavra, p, subtexto=subtexto, cor_aura=cor_aura)
+    print(f"Gerados {len(frames)} frames de impacto em: {p}")
+    return 0
+
+
+def cmd_manga_auto(slug: str, planejar: bool = False) -> int:
+    res = manga_auto_mod.executar(slug, somente_planejar=planejar)
+    resumo = {
+        "engine": "vx_manga_auto",
+        "slug": slug,
+        "status": res.get("status"),
+        "applied": res.get("applied", False),
+        "candidate_count": res.get("candidate_count", 0),
+        "selected": [{
+            "start": c.get("start"), "end": c.get("end"),
+            "text": c.get("text"), "score": c.get("score"),
+            "concepts": c.get("concepts", []),
+            "beat_score": c.get("beat_score"),
+            "visual_score": c.get("visual_score")
+        } for c in res.get("selected", [])],
+        "timeline": res.get("timeline"),
+    }
+    print(json.dumps(resumo, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_graficos_auto(slug: str, planejar: bool = False) -> int:
+    res = gfx_auto_mod.executar(slug, somente_planejar=planejar)
+    resumo = {
+        "engine": "vx_graphics_auto",
+        "slug": slug,
+        "applied": res.get("applied", False),
+        "candidate_count": res.get("candidate_count", 0),
+        "selected": [{
+            "start": c["start"], "end": c["end"], "word": c["word"],
+            "preset": c["preset"], "layout": c["layout"],
+            "score": c["score"], "beat_score": c["beat_score"]
+        } for c in res.get("selected", [])],
+        "timeline": res.get("timeline"),
+    }
+    print(json.dumps(resumo, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_folha_quadro(slug: str, fps: float = 30.0, geral: bool = False) -> int:
+    import folha_por_quadro as fq_mod
+    res = fq_mod.auditar(slug, fps=fps, por_take=not geral)
+    print(res["relatorio"])
+    print(json.dumps({k: v for k, v in res.items() if k != "relatorio"},
+                     ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_impacto_pro(slug: str, word: str, sub: str, preset: str, layout: str,
+                    dur: float, energia: str, max_cenas: int, saida: str,
+                    planejar: bool, tempo: float) -> int:
+    res = impact_pro_mod.executar(
+        slug, palavra=word, subtexto=sub, preset=preset,
+        layout=layout, duracao=dur, energia=energia,
+        max_cenas=max_cenas, saida=saida, somente_planejar=planejar,
+        tempo_inicio=tempo)
+    resumo = {
+        "engine": res["engine"], "plano": res["plano"],
+        "renderizados": res["renderizados"],
+        "cenas": [{"word": c["keyword_dominante"], "preset": c["preset"],
+                   "layout": c["layout"], "background": c["background"],
+                   "beats": c.get("audio_reactive", {}).get("beat_count", 0),
+                   "reactive": c.get("audio_reactive", {}).get("source", "curve_only")}
+                  for c in res["cenas"]],
+    }
+    print(json.dumps(resumo, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_cinemascope(altura: int = 140) -> int:
+    print(cine_mod.gerar_filtro_cinemascope(altura))
+    return 0
+
+
+def cmd_colorgrade(estilo: str = "cinematic_contrast") -> int:
+    print(col_mod.obter_filtro_color_grade(estilo))
+    return 0
+
+
+def cmd_speedlines(pasta: str) -> int:
+    p = Path(pasta)
+    frames = spd_mod.gerar_pacote_speedlines_animadas(p)
+    print(f"Gerados {len(frames)} frames de speedlines em: {p}")
+    return 0
+
+
+def cmd_social(slug: str) -> int:
+    m = carregar_manifesto(slug)
+    p_dir = dir_projeto(slug)
+    from vx import projeto as vx_projeto
+    audio_file = vx_projeto.audio(p_dir, m)
+    if not audio_file.exists():
+        audio_file = p_dir / "audio.wav"
+    momentos = soc_mod.encontrar_melhores_momentos(str(audio_file))
+    metas = soc_mod.gerar_metadados_sociais(m.get("personagem", slug), m.get("anime", ""), m.get("faixa", slug))
+    res = {"momentos_shorts": momentos, "metadados": metas}
+    out_file = p_dir / "social_pacote.json"
+    out_file.write_text(json.dumps(res, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"Pacote social gerado com sucesso em: {out_file}")
+    return 0
+
+
+def cmd_stems(audio: str, saida: str) -> int:
+    res = stem_mod.separar_stems_gpu(audio, Path(saida))
+    print("Stems separados:", json.dumps(res, indent=2))
+    return 0
+
+
+def cmd_motionblur(video: str, saida: str, intensidade: float = 0.5) -> int:
+    res = mb_mod.aplicar_motion_blur_video(video, saida, intensidade)
+    print("Motion blur aplicado:", res)
+    return 0
+
+
+def cmd_tumbas_ab(slug: str, frame: str) -> int:
+    m = carregar_manifesto(slug)
+    p_dir = dir_projeto(slug) / "capas_ab"
+    p = m.get("personagem", slug)
+    fx = m.get("faixa", slug)
+    aura = m.get("cor", {}).get("destaque", "#FF4500")
+    caps = tab_mod.gerar_suite_ab(frame, p_dir, p, fx, aura)
+    print(f"Geradas {len(caps)} opções de capa para teste A/B em: {p_dir}")
+    return 0
+
+
+def cmd_capa_ia(slug: str, motor: str, prompt: str | None = None, seed: int | None = None,
+                ref: str | None = None, denoise: float = 0.6, forcar: bool = False,
+                variacoes: int = 1) -> int:
+    carregar_manifesto(slug)
+    try:
+        out = art_ia_mod.gerar_miniatura_completa(
+            dir_projeto(slug), motor=motor, prompt_customizado=prompt, seed=seed,
+            ref=ref, denoise=denoise, forcar=forcar, variacoes=variacoes)
+    except img_local_mod.ComfyIndisponivel as exc:
+        print(f"ERRO: {exc}", file=sys.stderr)
+        return 2
+    print(f"Capa IA ({motor}) gerada: {out}")
+    return 0
+
+
+def cmd_gerar_imagem(slug: str, tipo: str, cena: str | None = None, seed: int | None = None,
+                     variacoes: int = 1, ref: str | None = None, denoise: float = 0.6,
+                     forcar: bool = False) -> int:
+    carregar_manifesto(slug)
+    try:
+        outs = img_local_mod.gerar(dir_projeto(slug), tipo, cena=cena, seed=seed,
+                                   variacoes=variacoes, ref=ref, denoise=denoise,
+                                   forcar=forcar)
+    except img_local_mod.ComfyIndisponivel as exc:
+        print(f"ERRO: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps([str(o) for o in outs], indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_promover(slug: str, run_id: str) -> int:
+    import entrega as ent_mod
+    reg = ent_mod.promover(slug, run_id)
+    print(json.dumps(reg, indent=2, ensure_ascii=False))
+    print(f"proximo passo obrigatorio: estudio.py entrega {slug}")
+    return 0
+
+
+def cmd_entrega(slug: str, n_shorts: int = 3, forcar_artes: bool = False) -> int:
+    import entrega as ent_mod
+    carregar_manifesto(slug)
+    res = ent_mod.executar(slug, n_shorts=n_shorts, forcar_artes=forcar_artes)
+    print(json.dumps(res, indent=2, ensure_ascii=False))
+    print("PACOTE COMPLETO" if res["pronto"] else "PACOTE INCOMPLETO: " + "; ".join(res["faltando"].values()))
+    return 0 if res["pronto"] else 1
+
+
+def cmd_lancamento(slug: str) -> int:
+    carregar_manifesto(slug)
+    res = soc_mod.pacote_lancamento(dir_projeto(slug))
+    print(json.dumps(res, indent=2, ensure_ascii=False))
+    return 0 if res["pronto"] else 1
+
+
+def cmd_shorts(slug: str, n: int = 3, dur: float = 30.0, planejar: bool = False) -> int:
+    import shorts_pipeline as shorts_mod
+    carregar_manifesto(slug)
+    res = shorts_mod.executar(slug, n=n, dur=dur, somente_planejar=planejar)
+    print(json.dumps(res, indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_artes_ia(slug: str, forcar: bool = False) -> int:
+    carregar_manifesto(slug)
+    try:
+        res = art_ia_mod.gerar_pacote_artes(dir_projeto(slug), forcar=forcar)
+    except img_local_mod.ComfyIndisponivel as exc:
+        print(f"ERRO: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(res, indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_comfy_parar() -> int:
+    print("ComfyUI encerrado." if img_local_mod.parar_comfy()
+          else "Nenhum ComfyUI iniciado pelo estudio (pid ausente); nada a fazer.")
+    return 0
+
+
+def cmd_titulos(slug: str, planejar: bool = False) -> int:
+    import titulos_pipeline as tit_mod
+    print(json.dumps(tit_mod.executar(slug, somente_planejar=planejar), indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_cenas_ia(slug: str, planejar: bool = False) -> int:
+    res = cenas_ia_mod.executar(slug, somente_planejar=planejar)
+    print(json.dumps({k: v for k, v in res.items() if k != "config"}, indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_comfy_status(iniciar: bool = False) -> int:
+    st = img_local_mod.status(iniciar=iniciar)
+    print(json.dumps(st, indent=2, ensure_ascii=False))
+    return 0 if st.get("online") and st.get("checkpoint_ok") else 1
+
+
+def cmd_card_saber(frame: str, nome: str, saida: str) -> int:
+    if not saber_mod:
+        print("ERRO: card-saber precisa do rembg (pip install rembg[gpu]==2.0.67).", file=sys.stderr)
+        return 2
+    saber_mod.renderizar_video_apresentacao_saber(frame, nome, saida)
+    return 0
+
+
+def cmd_legendas_mugen(slug: str) -> int:
+    p_dir = dir_projeto(slug)
+    letra_txt = p_dir / "LETRA.txt"
+    out_ass = p_dir / "legendas" / f"{slug}_mugen.ass"
+    leg_pro_mod.converter_letra_para_ass_mugen(letra_txt, out_ass)
+    return 0
+
+
+def cmd_snap_impact(tempo: float) -> int:
+    print(snap_mod.gerar_filtro_snap_impact(tempo))
+    return 0
+
+
+def cmd_ghosting(tempo: float) -> int:
+    print(ghost_mod.gerar_filtro_ghosting(tempo))
+    return 0
+
+
+def cmd_smartcrop(video: str, saida: str) -> int:
+    crop_mod.renderizar_smart_crop_916(video, saida)
+    return 0
+
+
+def cmd_auditar_ritmo_timeline(slug: str) -> int:
+    p_dir = dir_projeto(slug)
+    tl_path = p_dir / "timeline.json"
+    res = rit_aud_mod.auditar_dinamica_timeline(tl_path)
+    print(json.dumps(res, indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_legenda_palavra(slug: str) -> int:
+    p_dir = dir_projeto(slug)
+    transc = p_dir / "entradas" / "transcricao.json"
+    out_ass = p_dir / "legendas" / f"{slug}_word_by_word.ass"
+    lww_mod.gerar_ass_word_by_word(transc, out_ass)
+    return 0
+
+
+def cmd_legenda_neon(slug: str) -> int:
+    p_dir = dir_projeto(slug)
+    transc = p_dir / "entradas" / "transcricao.json"
+    out_ass = p_dir / "legendas" / f"{slug}_neon.ass"
+    neon_leg_mod.gerar_ass_neon_motion(transc, out_ass)
+    return 0
+
+
+def cmd_loop_infinito(video: str, saida: str) -> int:
+    loop_mod.criar_short_loop_infinito(video, saida)
+    return 0
+
+
+def cmd_paineis(modo: str = "2_paineis_h") -> int:
+    print(pan_mod.gerar_filtro_paineis_manga(modo))
+    return 0
+
+
+def cmd_color_splash(cor: str, inicio: float = 0.0, dur: float = 2.0) -> int:
+    print(splash_mod.gerar_filtro_color_splash(cor, inicio, dur))
+    return 0
+
+
+def cmd_hook_retencao(texto: str, saida: str) -> int:
+    hook_mod.salvar_overlay_hook(texto, Path(saida))
+    return 0
+
+
+def cmd_pixel_sort(tempo: float) -> int:
+    print(px_mod.gerar_filtro_pixel_sort_glitch(tempo))
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -1870,50 +2249,13 @@ def main(argv=None) -> int:
     if a.cmd == "timeline":
         return cmd_timeline(a.slug)
     if a.cmd == "catalogar-cenas":
-        res = scene_intel_mod.catalogar_projeto(
-            dir_projeto(a.slug), force=a.force, sample_interval=a.interval)
-        resumo = {
-            "engine": "vx_scene_intelligence",
-            "slug": a.slug,
-            "clips_total": res.get("clips_total", 0),
-            "eligible_clips": res.get("eligible_clips", 0),
-            "scenes_total": res.get("scenes_total", 0),
-            "cache": res.get("cache", {}),
-            "errors": res.get("errors", []),
-        }
-        print(json.dumps(resumo, ensure_ascii=False, indent=2))
-        return 0 if not res.get("errors") else 1
+        return cmd_catalogar_cenas(a.slug, a.force, a.interval)
     if a.cmd == "cenas-auto":
-        res = scene_match_mod.executar(
-            dir_projeto(a.slug), somente_planejar=a.planejar,
-            force_catalog=a.force_catalog)
-        resumo = {
-            "engine": "vx_semantic_scene_matcher",
-            "slug": a.slug,
-            "status": res.get("status"),
-            "applied": res.get("applied", False),
-            "matched_segments": res.get("matched_segments", 0),
-            "catalog": res.get("catalog", {}),
-            "sample_decisions": [{
-                "index": d.get("index"), "type": d.get("type"),
-                "text": d.get("text", ""), "clip": d.get("clip"),
-                "src": d.get("src"), "score": d.get("score"),
-                "concepts": d.get("concepts", []),
-                "scene_tags": d.get("scene_tags", [])
-            } for d in res.get("decisions", []) if d.get("status") == "matched"][:12],
-        }
-        print(json.dumps(resumo, ensure_ascii=False, indent=2))
-        return 0
+        return cmd_cenas_auto(a.slug, a.planejar, a.force_catalog)
     if a.cmd == "planejar":
         return cmd_planejar(a.slug)
     if a.cmd == "chroma-auto":
-        import chroma_auto as ch_mod
-        carregar_manifesto(a.slug)
-        res = ch_mod.executar(a.slug)
-        print(f"== chroma-auto {a.slug} == {res['status']}: {res['takes']} take(s) de tela verde recompostos")
-        for x in res.get("itens", []):
-            print(f"  {x['start']:.2f}-{x['end']:.2f}s  {x['fonte']}@{float(x['src']):.1f}s -> {x['take']}")
-        return 0
+        return cmd_chroma_auto(a.slug)
     if a.cmd == "fonte-limpa":
         return cmd_fonte_limpa(a.slug, a.corrigir)
     if a.cmd == "referencia":
@@ -1929,249 +2271,87 @@ def main(argv=None) -> int:
     if a.cmd == "filtrar":
         return cmd_filtrar(a.slug, a.efeitos, a.intensidade, a.alvo, a.saida)
     if a.cmd == "movimento":
-        res = mov_mod.analisar_fluxo_movimento(a.video)
-        print(json.dumps(res, indent=2, ensure_ascii=False))
-        return 0
+        return cmd_movimento(a.video)
     if a.cmd == "subgrave":
-        evs = bass_mod.extrair_picos_subgrave(a.audio)
-        print(f"Total de impactos 808/sub-grave detectados: {len(evs)}")
-        print(json.dumps(evs[:10], indent=2, ensure_ascii=False))
-        return 0
+        return cmd_subgrave(a.audio)
     if a.cmd == "curadoria":
-        rel = cur_mod.auditar_clipe_completo(a.video)
-        print(json.dumps(rel, indent=2, ensure_ascii=False))
-        return 0 if rel.get("aprovado_para_esteira") else 1
+        return cmd_curadoria(a.video)
     if a.cmd == "impacto":
-        p = Path(f"artes_impacto_{a.palavra.lower()}")
-        frames = imp_mod.gerar_sequencia_animacao_impacto(a.palavra, p, subtexto=a.sub, cor_aura=a.aura)
-        print(f"Gerados {len(frames)} frames de impacto em: {p}")
-        return 0
+        return cmd_impacto(a.palavra, a.sub, a.aura)
     if a.cmd == "manga-auto":
-        res = manga_auto_mod.executar(a.slug, somente_planejar=a.planejar)
-        resumo = {
-            "engine": "vx_manga_auto",
-            "slug": a.slug,
-            "status": res.get("status"),
-            "applied": res.get("applied", False),
-            "candidate_count": res.get("candidate_count", 0),
-            "selected": [{
-                "start": c.get("start"), "end": c.get("end"),
-                "text": c.get("text"), "score": c.get("score"),
-                "concepts": c.get("concepts", []),
-                "beat_score": c.get("beat_score"),
-                "visual_score": c.get("visual_score")
-            } for c in res.get("selected", [])],
-            "timeline": res.get("timeline"),
-        }
-        print(json.dumps(resumo, ensure_ascii=False, indent=2))
-        return 0
+        return cmd_manga_auto(a.slug, a.planejar)
     if a.cmd == "graficos-auto":
-        res = gfx_auto_mod.executar(a.slug, somente_planejar=a.planejar)
-        resumo = {
-            "engine": "vx_graphics_auto",
-            "slug": a.slug,
-            "applied": res.get("applied", False),
-            "candidate_count": res.get("candidate_count", 0),
-            "selected": [{
-                "start": c["start"], "end": c["end"], "word": c["word"],
-                "preset": c["preset"], "layout": c["layout"],
-                "score": c["score"], "beat_score": c["beat_score"]
-            } for c in res.get("selected", [])],
-            "timeline": res.get("timeline"),
-        }
-        print(json.dumps(resumo, ensure_ascii=False, indent=2))
-        return 0
+        return cmd_graficos_auto(a.slug, a.planejar)
     if a.cmd == "folha-quadro":
-        import folha_por_quadro as fq_mod
-        res = fq_mod.auditar(a.slug, fps=a.fps, por_take=not a.geral)
-        print(res["relatorio"])
-        print(json.dumps({k: v for k, v in res.items() if k != "relatorio"},
-                         ensure_ascii=False, indent=2))
-        return 0
+        return cmd_folha_quadro(a.slug, a.fps, a.geral)
     if a.cmd == "impacto-pro":
-        res = impact_pro_mod.executar(
-            a.slug, palavra=a.word, subtexto=a.sub, preset=a.preset,
-            layout=a.layout, duracao=a.dur, energia=a.energia,
-            max_cenas=a.max_cenas, saida=a.saida, somente_planejar=a.planejar,
-            tempo_inicio=a.tempo)
-        resumo = {
-            "engine": res["engine"], "plano": res["plano"],
-            "renderizados": res["renderizados"],
-            "cenas": [{"word": c["keyword_dominante"], "preset": c["preset"],
-                       "layout": c["layout"], "background": c["background"],
-                       "beats": c.get("audio_reactive", {}).get("beat_count", 0),
-                       "reactive": c.get("audio_reactive", {}).get("source", "curve_only")}
-                      for c in res["cenas"]],
-        }
-        print(json.dumps(resumo, ensure_ascii=False, indent=2))
-        return 0
+        return cmd_impacto_pro(a.slug, a.word, a.sub, a.preset, a.layout,
+                               a.dur, a.energia, a.max_cenas, a.saida,
+                               a.planejar, a.tempo)
     if a.cmd == "cinemascope":
-        print(cine_mod.gerar_filtro_cinemascope(a.altura))
-        return 0
+        return cmd_cinemascope(a.altura)
     if a.cmd == "colorgrade":
-        print(col_mod.obter_filtro_color_grade(a.estilo))
-        return 0
+        return cmd_colorgrade(a.estilo)
     if a.cmd == "speedlines":
-        p = Path(a.pasta)
-        frames = spd_mod.gerar_pacote_speedlines_animadas(p)
-        print(f"Gerados {len(frames)} frames de speedlines em: {p}")
-        return 0
+        return cmd_speedlines(a.pasta)
     if a.cmd == "social":
-        m = carregar_manifesto(a.slug)
-        p_dir = dir_projeto(a.slug)
-        from vx import projeto as vx_projeto
-        audio_file = vx_projeto.audio(p_dir, m)
-        if not audio_file.exists():
-            audio_file = p_dir / "audio.wav"
-        momentos = soc_mod.encontrar_melhores_momentos(str(audio_file))
-        metas = soc_mod.gerar_metadados_sociais(m.get("personagem", a.slug), m.get("anime", ""), m.get("faixa", a.slug))
-        res = {"momentos_shorts": momentos, "metadados": metas}
-        out_file = p_dir / "social_pacote.json"
-        out_file.write_text(json.dumps(res, indent=2, ensure_ascii=False), encoding="utf-8")
-        print(f"Pacote social gerado com sucesso em: {out_file}")
-        return 0
+        return cmd_social(a.slug)
     if a.cmd == "stems":
-        res = stem_mod.separar_stems_gpu(a.audio, Path(a.saida))
-        print("Stems separados:", json.dumps(res, indent=2))
-        return 0
+        return cmd_stems(a.audio, a.saida)
     if a.cmd == "motionblur":
-        res = mb_mod.aplicar_motion_blur_video(a.video, a.saida, a.intensidade)
-        print("Motion blur aplicado:", res)
-        return 0
+        return cmd_motionblur(a.video, a.saida, a.intensidade)
     if a.cmd == "tumbas-ab":
-        m = carregar_manifesto(a.slug)
-        p_dir = dir_projeto(a.slug) / "capas_ab"
-        p = m.get("personagem", a.slug)
-        fx = m.get("faixa", a.slug)
-        aura = m.get("cor", {}).get("destaque", "#FF4500")
-        caps = tab_mod.gerar_suite_ab(a.frame, p_dir, p, fx, aura)
-        print(f"Geradas {len(caps)} opções de capa para teste A/B em: {p_dir}")
-        return 0
+        return cmd_tumbas_ab(a.slug, a.frame)
     if a.cmd == "capa-ia":
-        carregar_manifesto(a.slug)
-        try:
-            out = art_ia_mod.gerar_miniatura_completa(
-                dir_projeto(a.slug), motor=a.motor, prompt_customizado=a.prompt, seed=a.seed,
-                ref=a.ref, denoise=a.denoise, forcar=a.forcar, variacoes=a.variacoes)
-        except img_local_mod.ComfyIndisponivel as exc:
-            print(f"ERRO: {exc}", file=sys.stderr)
-            return 2
-        print(f"Capa IA ({a.motor}) gerada: {out}")
-        return 0
+        return cmd_capa_ia(a.slug, a.motor, a.prompt, a.seed, a.ref,
+                           a.denoise, a.forcar, a.variacoes)
     if a.cmd == "gerar-imagem":
-        carregar_manifesto(a.slug)
-        try:
-            outs = img_local_mod.gerar(dir_projeto(a.slug), a.tipo, cena=a.cena, seed=a.seed,
-                                       variacoes=a.variacoes, ref=a.ref, denoise=a.denoise,
-                                       forcar=a.forcar)
-        except img_local_mod.ComfyIndisponivel as exc:
-            print(f"ERRO: {exc}", file=sys.stderr)
-            return 2
-        print(json.dumps([str(o) for o in outs], indent=2, ensure_ascii=False))
-        return 0
+        return cmd_gerar_imagem(a.slug, a.tipo, a.cena, a.seed,
+                                a.variacoes, a.ref, a.denoise, a.forcar)
     if a.cmd == "promover":
-        import entrega as ent_mod
-        reg = ent_mod.promover(a.slug, a.run_id)
-        print(json.dumps(reg, indent=2, ensure_ascii=False))
-        print(f"proximo passo obrigatorio: estudio.py entrega {a.slug}")
-        return 0
+        return cmd_promover(a.slug, a.run_id)
     if a.cmd == "entrega":
-        import entrega as ent_mod
-        carregar_manifesto(a.slug)
-        res = ent_mod.executar(a.slug, n_shorts=a.n, forcar_artes=a.forcar_artes)
-        print(json.dumps(res, indent=2, ensure_ascii=False))
-        print("PACOTE COMPLETO" if res["pronto"] else "PACOTE INCOMPLETO: " + "; ".join(res["faltando"].values()))
-        return 0 if res["pronto"] else 1
+        return cmd_entrega(a.slug, a.n, a.forcar_artes)
     if a.cmd == "lancamento":
-        carregar_manifesto(a.slug)
-        res = soc_mod.pacote_lancamento(dir_projeto(a.slug))
-        print(json.dumps(res, indent=2, ensure_ascii=False))
-        return 0 if res["pronto"] else 1
+        return cmd_lancamento(a.slug)
     if a.cmd == "shorts":
-        import shorts_pipeline as shorts_mod
-        carregar_manifesto(a.slug)
-        res = shorts_mod.executar(a.slug, n=a.n, dur=a.dur, somente_planejar=a.planejar)
-        print(json.dumps(res, indent=2, ensure_ascii=False))
-        return 0
+        return cmd_shorts(a.slug, a.n, a.dur, a.planejar)
     if a.cmd == "artes-ia":
-        carregar_manifesto(a.slug)
-        try:
-            res = art_ia_mod.gerar_pacote_artes(dir_projeto(a.slug), forcar=a.forcar)
-        except img_local_mod.ComfyIndisponivel as exc:
-            print(f"ERRO: {exc}", file=sys.stderr)
-            return 2
-        print(json.dumps(res, indent=2, ensure_ascii=False))
-        return 0
+        return cmd_artes_ia(a.slug, a.forcar)
     if a.cmd == "comfy-parar":
-        print("ComfyUI encerrado." if img_local_mod.parar_comfy()
-              else "Nenhum ComfyUI iniciado pelo estudio (pid ausente); nada a fazer.")
-        return 0
+        return cmd_comfy_parar()
     if a.cmd == "titulos":
-        import titulos_pipeline as tit_mod
-        print(json.dumps(tit_mod.executar(a.slug, somente_planejar=a.planejar), indent=2, ensure_ascii=False))
-        return 0
+        return cmd_titulos(a.slug, a.planejar)
     if a.cmd == "cenas-ia":
-        res = cenas_ia_mod.executar(a.slug, somente_planejar=a.planejar)
-        print(json.dumps({k: v for k, v in res.items() if k != "config"}, indent=2, ensure_ascii=False))
-        return 0
+        return cmd_cenas_ia(a.slug, a.planejar)
     if a.cmd == "comfy-status":
-        st = img_local_mod.status(iniciar=a.iniciar)
-        print(json.dumps(st, indent=2, ensure_ascii=False))
-        return 0 if st.get("online") and st.get("checkpoint_ok") else 1
+        return cmd_comfy_status(a.iniciar)
     if a.cmd == "card-saber":
-        if not saber_mod:
-            print("ERRO: card-saber precisa do rembg (pip install rembg[gpu]==2.0.67).", file=sys.stderr)
-            return 2
-        saber_mod.renderizar_video_apresentacao_saber(a.frame, a.nome, a.saida)
-        return 0
+        return cmd_card_saber(a.frame, a.nome, a.saida)
     if a.cmd == "legendas-mugen":
-        p_dir = dir_projeto(a.slug)
-        letra_txt = p_dir / "LETRA.txt"
-        out_ass = p_dir / "legendas" / f"{a.slug}_mugen.ass"
-        leg_pro_mod.converter_letra_para_ass_mugen(letra_txt, out_ass)
-        return 0
+        return cmd_legendas_mugen(a.slug)
     if a.cmd == "snap-impact":
-        print(snap_mod.gerar_filtro_snap_impact(a.tempo))
-        return 0
+        return cmd_snap_impact(a.tempo)
     if a.cmd == "ghosting":
-        print(ghost_mod.gerar_filtro_ghosting(a.tempo))
-        return 0
+        return cmd_ghosting(a.tempo)
     if a.cmd == "smartcrop":
-        out = crop_mod.renderizar_smart_crop_916(a.video, a.saida)
-        return 0
+        return cmd_smartcrop(a.video, a.saida)
     if a.cmd == "auditar-ritmo":
-        p_dir = dir_projeto(a.slug)
-        tl_path = p_dir / "timeline.json"
-        res = rit_aud_mod.auditar_dinamica_timeline(tl_path)
-        print(json.dumps(res, indent=2, ensure_ascii=False))
-        return 0
+        return cmd_auditar_ritmo_timeline(a.slug)
     if a.cmd == "legenda-palavra":
-        p_dir = dir_projeto(a.slug)
-        transc = p_dir / "entradas" / "transcricao.json"
-        out_ass = p_dir / "legendas" / f"{a.slug}_word_by_word.ass"
-        lww_mod.gerar_ass_word_by_word(transc, out_ass)
-        return 0
+        return cmd_legenda_palavra(a.slug)
     if a.cmd == "legenda-neon":
-        p_dir = dir_projeto(a.slug)
-        transc = p_dir / "entradas" / "transcricao.json"
-        out_ass = p_dir / "legendas" / f"{a.slug}_neon.ass"
-        neon_leg_mod.gerar_ass_neon_motion(transc, out_ass)
-        return 0
+        return cmd_legenda_neon(a.slug)
     if a.cmd == "loop-infinito":
-        out = loop_mod.criar_short_loop_infinito(a.video, a.saida)
-        return 0
+        return cmd_loop_infinito(a.video, a.saida)
     if a.cmd == "paineis":
-        print(pan_mod.gerar_filtro_paineis_manga(a.modo))
-        return 0
+        return cmd_paineis(a.modo)
     if a.cmd == "color-splash":
-        print(splash_mod.gerar_filtro_color_splash(a.cor, a.inicio, a.dur))
-        return 0
+        return cmd_color_splash(a.cor, a.inicio, a.dur)
     if a.cmd == "hook-retencao":
-        out = hook_mod.salvar_overlay_hook(a.texto, Path(a.saida))
-        return 0
+        return cmd_hook_retencao(a.texto, a.saida)
     if a.cmd == "pixel-sort":
-        print(px_mod.gerar_filtro_pixel_sort_glitch(a.tempo))
-        return 0
+        return cmd_pixel_sort(a.tempo)
     print(__doc__)
     return 0
 

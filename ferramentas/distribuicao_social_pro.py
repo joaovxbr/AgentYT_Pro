@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
+r"""
 distribuicao_social_pro.py — Gerador Automático de Pacote Multiplataforma (Shorts/TikTok/Reels).
 A partir de um projeto concluído:
 1. Analisa a curva de energia do áudio para escolher automaticamente os 3 MELHORES momentos:
