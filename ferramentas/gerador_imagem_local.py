@@ -304,6 +304,54 @@ def validar_imagem(img: Image.Image) -> None:
         raise RuntimeError(f"Imagem gerada chapada/sem detalhe (desvio {desvio:.1f})")
 
 
+def gerar_via_api_openai(cfg: Dict[str, Any], prompt: str,
+                         largura: int, altura: int) -> Optional[Image.Image]:
+    """Tenta gerar via endpoint de API compativel (ex: /v1/images/generations)."""
+    import base64
+    endpoint = cfg.get("api_endpoint")
+    key = cfg.get("api_key")
+    modelo = cfg.get("api_model") or "ag/gemini-3.1-flash-image"
+    if not endpoint or not key:
+        return None
+    payload = {
+        "model": modelo,
+        "prompt": prompt,
+        "n": 1,
+        "size": "auto",
+        "quality": "auto",
+        "background": "auto",
+        "image_detail": "high",
+        "output_format": "png"
+    }
+    req = urllib.request.Request(
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {key}"
+        }
+    )
+    host = urllib.parse.urlparse(endpoint).hostname or ""
+    abrir = (_SEM_PROXY.open if host in ("127.0.0.1", "localhost", "::1")
+             else urllib.request.urlopen)
+    try:
+        with abrir(req, timeout=30) as resp:
+            d = json.loads(resp.read().decode("utf-8"))
+            data = d.get("data", [])
+            if not data:
+                return None
+            item = data[0]
+            if "b64_json" in item:
+                buf = io.BytesIO(base64.b64decode(item["b64_json"]))
+                return Image.open(buf).convert("RGB")
+            elif "url" in item:
+                with urllib.request.urlopen(item["url"], timeout=30) as img_resp:
+                    return Image.open(io.BytesIO(img_resp.read())).convert("RGB")
+    except Exception as exc:
+        print(f"[VX IMAGE] API externa ({modelo} em {host}) indisponivel: {exc}")
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Porta principal
 # ---------------------------------------------------------------------------
@@ -349,6 +397,15 @@ def gerar(projeto_dir: Path, tipo: str = "capa", cena: Optional[str] = None,
             print(f"[VX IMAGE] cache: {destino.name}")
             saidas.append(destino)
             continue
+        # Tenta API externa configurada (se houver) antes do ComfyUI local
+        if cfg.get("api_endpoint"):
+            img_api = gerar_via_api_openai(cfg, positivo, largura, altura)
+            if img_api is not None:
+                validar_imagem(img_api)
+                img_api.save(destino, "PNG")
+                print(f"[VX IMAGE] ok via API externa -> {destino}")
+                saidas.append(destino)
+                continue
         if not checado:
             if cliente_padrao:
                 _registrar_sessao(garantir_comfy(cfg))
