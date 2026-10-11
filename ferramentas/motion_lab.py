@@ -40,7 +40,7 @@ CFG_ARQ = RAIZ / "assets" / "design" / "motion_lab.json"
 
 PADRAO = {
     "fps": 30, "largura": 1920, "altura": 1080,
-    "recorte": {"modelo": "u2net", "lado": 512, "suavizacao": 0.55, "feather": 3},
+    "recorte": {"modelo": "isnet-anime", "lado": 512, "suavizacao": 0.55, "feather": 3},
     "plate": {"escurecer": 0.72, "saturacao": 0.82, "push_in": 0.05, "sujeito_brilho": 0.96},
     "tracking": {"fator": 0.6, "suavizacao": 0.8, "max_px": 80},
     "grao": 0.03, "vinheta": 0.35,
@@ -890,6 +890,48 @@ def estilo_faiscas(c: Contexto, t: float, i: int, off):
     return None, frente
 
 
+def estilo_impacto_portal(c: Contexto, t: float, i: int, off):
+    """Portal dimensional de energia girando atras do personagem + pulso no 808 + palavra com choque."""
+    jp = c.janela_palavra(t)
+    if not jp:
+        return None, None
+    palavra, ini, fim = jp
+    prog = ease_out((t - ini + 0.1) / 0.45)
+    if prog <= 0:
+        return None, None
+    fade = _fade_saida(t, fim)
+    pulso = c.pulso(t)
+
+    atras = c.vazio()
+    cx, cy = c.W / 2 + off[0] * 0.7, c.H * 0.45 + off[1] * 0.7
+
+    # Aneis concêntricos de energia do portal com rotacao
+    raio_max = int(c.H * 0.42 * prog)
+    if raio_max > 8:
+        portal = Image.new("RGBA", (c.W, c.H), (0, 0, 0, 0))
+        dr = ImageDraw.Draw(portal)
+        ang = (t * 2.8) % (2 * math.pi)
+        n_arcos = 5
+        for r_idx in range(n_arcos):
+            r = int(raio_max * (0.35 + 0.65 * (r_idx + 1) / n_arcos))
+            r_pulso = int(r * (1.0 + 0.08 * pulso))
+            box = (cx - r_pulso, cy - r_pulso, cx + r_pulso, cy + r_pulso)
+            rot_arco = math.degrees(ang * (1 if r_idx % 2 == 0 else -1.2) + r_idx * 45)
+            alpha_arco = int(180 * (1 - r_idx / n_arcos * 0.4) * prog * fade)
+            dr.arc(box, start=rot_arco, end=rot_arco + 230, fill=(*c.acento, alpha_arco), width=4 + (2 if r_idx == 0 else 0))
+        glow_portal = portal.filter(ImageFilter.GaussianBlur(8))
+        atras = Image.alpha_composite(atras, glow_portal)
+        atras = Image.alpha_composite(atras, portal)
+
+    f = _ajustar(palavra, c.f["impacto"], int(c.W * 0.78), int(c.H * 0.42))
+    esc = 1.0 + 0.05 * pulso
+    lay = _texto(palavra, f, cor=(250, 248, 255), stroke=4, stroke_cor=(8, 8, 14),
+                 glow=c.acento, glow_r=20, alpha=int(255 * prog * fade))
+    _colar(atras, _escalar(lay, esc), cx, cy)
+
+    return atras, None
+
+
 # ---------------------------------------------------------------------------
 # Lote 3 (em teste): CARDS com fundo proprio — medidos na referencia MUGEN RAPS
 # (cerebro/referencias.md): 20 momentos graficos em 240 s; 13 sobre a cena
@@ -1213,6 +1255,7 @@ ESTILOS = {
     "contorno_energia": estilo_contorno_energia,
     "letterbox_cinema": estilo_letterbox_cinema,
     "faiscas": estilo_faiscas,
+    "impacto_portal": estilo_impacto_portal,
     # lote 3 (em teste no lab): cards com fundo proprio
     "card_cena_escura": estilo_card_cena_escura,
     "card_cenario": estilo_card_cenario,
@@ -1459,10 +1502,26 @@ def matiz_dominante(rgb: np.ndarray, bins: int = 24) -> float:
     return float((bordas[k] + bordas[k + 1]) / 2)
 
 
+@functools.lru_cache(maxsize=4)
+def _sessao_recorte(modelo: str):
+    """Sessão rembg com fallback automático para u2net se o modelo falhar."""
+    from rembg import new_session
+    try:
+        return new_session(modelo)
+    except Exception as exc:
+        if modelo != "u2net":
+            print(f"  [motion_lab] aviso: modelo {modelo} falhou ({exc}); usando fallback u2net...")
+            try:
+                return new_session("u2net")
+            except Exception:
+                pass
+        raise
+
+
 def _mascaras(quadros: list[np.ndarray], cortes: set[int], cfg: dict) -> list[Image.Image]:
-    from rembg import new_session, remove
+    from rembg import remove
     rc = cfg["recorte"]
-    sessao = new_session(rc["modelo"])
+    sessao = _sessao_recorte(rc.get("modelo", "isnet-anime"))
     W, H = cfg["largura"], cfg["altura"]
     lado = int(rc["lado"])
     out, anterior = [], None

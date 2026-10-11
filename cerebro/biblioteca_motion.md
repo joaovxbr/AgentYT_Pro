@@ -3,7 +3,7 @@
 > Não edite à mão: mude o JSON e rode `estudio.py cerebro`. Um teste falha se este arquivo ficar defasado.
 > Como funciona o sistema inteiro: `cerebro/motion.md`.
 
-**15 ativos** · 0 em teste · 1 desativados
+**15 ativos** · 1 em teste · 1 desativados
 
 ## Como a esteira escolhe (automático, pela letra e pelo vídeo)
 1. O `graficos-auto` escolhe os momentos (palavra forte, nome, batida) e, para cada um, a **categoria**:
@@ -156,6 +156,16 @@ Tela quase preta com degrade da cor; a linha palavra por palavra, grande e centr
 - **Quando usar:** Linha-chave que precisa de silencio visual.
 - **Evitar:** Refrao agitado.
 - **Gatilhos:** linha 2
+
+### Em teste (1)
+
+#### `impacto_portal` — palavra · camada tras · lote 4
+
+Portal dimensional de energia rotativa atras do personagem, pulsando no 808 com palavra de choque.
+
+- **Quando usar:** Batida forte, momentos de clímax místico ou revelação de poder no lab de testes.
+- **Evitar:** Trechos sem batida marcada ou sem personagem recortado.
+- **Gatilhos:** batida 4, atmosfera 5
 
 ### Desativado (1)
 

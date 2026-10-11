@@ -3,7 +3,7 @@
   "fps": 30,
   "largura": 1920,
   "altura": 1080,
-  "recorte": {"modelo": "u2net", "lado": 512, "suavizacao": 0.55, "feather": 3},
+  "recorte": {"modelo": "isnet-anime", "lado": 512, "suavizacao": 0.55, "feather": 3},
   "plate": {"escurecer": 0.72, "saturacao": 0.82, "push_in": 0.05, "sujeito_brilho": 0.96},
   "tracking": {"fator": 0.6, "suavizacao": 0.8, "max_px": 80},
   "grao": 0.03,
@@ -37,5 +37,5 @@
     "veneno": "#6CFF3A", "verde": "#3DFF7A", "rosa": "#FF4FB8", "branco": "#F4F6FF", "prata": "#D8DEE9"
   },
   "estilos": ["atras_personagem", "palavra_por_palavra", "glitch_slice", "kanji_fundo", "maquina_escrever",
-              "impacto_zoom", "eco_repeticao", "fragmentos", "contorno_energia", "letterbox_cinema", "faiscas"]
+              "impacto_zoom", "eco_repeticao", "fragmentos", "contorno_energia", "letterbox_cinema", "faiscas", "impacto_portal"]
 }

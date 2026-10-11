@@ -124,6 +124,13 @@
       "descricao": "Tela quase preta com degrade da cor; a linha palavra por palavra, grande e centralizada.",
       "quando_usar": "Linha-chave que precisa de silencio visual.",
       "evitar": "Refrao agitado."
+    },
+    "impacto_portal": {
+      "status": "em_teste", "tipo": "palavra", "camada": "tras", "lote": 4,
+      "gatilhos": {"batida": 4, "atmosfera": 5},
+      "descricao": "Portal dimensional de energia rotativa atras do personagem, pulsando no 808 com palavra de choque.",
+      "quando_usar": "Batida forte, momentos de clímax místico ou revelação de poder no lab de testes.",
+      "evitar": "Trechos sem batida marcada ou sem personagem recortado."
     }
   }
 }
