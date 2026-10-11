@@ -48,15 +48,22 @@ def calcular_trajetoria_camera(video_entrada: str, janela_suavizacao: int = 15) 
 
         curr_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         diff = cv2.absdiff(prev_gray, curr_gray)
-        _, thresh = cv2.threshold(diff, 25, 255, cv2.THRESH_BINARY)
+        _, thresh = cv2.threshold(diff, 20, 255, cv2.THRESH_BINARY)
 
         # Encontra o centro de massa do movimento
         m = cv2.moments(thresh)
-        if m["m00"] > 500:
+        if m["m00"] > 400:
             cx = int(m["m10"] / m["m00"])
         else:
-            # Se não houver movimento brusco, mantém perto do centro
-            cx = w // 2
+            # Em cenas com movimento sutil, detecta o centro de bordas/detalhes (personagem/rosto)
+            sobel_x = cv2.Sobel(curr_gray, cv2.CV_32F, 1, 0, ksize=3)
+            bordas = np.abs(sobel_x)
+            # Pondera a regiao central e terço superior (onde rostos costumam estar)
+            col_weights = bordas[int(h * 0.15):int(h * 0.70), :].sum(axis=0)
+            if col_weights.sum() > 1000:
+                cx = int(np.average(np.arange(w), weights=col_weights))
+            else:
+                cx = w // 2
 
         # Limita o centro X
         x_desejado = cx - crop_w // 2
