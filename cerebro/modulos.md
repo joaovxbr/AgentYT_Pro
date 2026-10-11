@@ -88,6 +88,7 @@ Todo arquivo `ferramentas/*.py` precisa aparecer aqui (um teste reprova módulo 
 | `intro_card.py` | manual | card para `pov` |
 | `artes_base.py` | manual | capa/banner |
 | `motion_lab.py` | esteira | motion typography sobre a cena real (15 estilos na esteira: 11 sobre a cena + 4 cards com fundo próprio; cor pela letra) usada pelo `graficos-auto`; comando `motion-lab` para prévias em `lab/motion/`. Manual: `cerebro/motion.md` |
+| `lab_mugen_pro.py` | manual | gerador de prévias cinematográficas avançadas no estilo MUGEN RAPS (fenda de sombras, kanji vertical, tipografia frasal com speedlines e legenda neon) |
 
 ## Render e efeitos
 | Módulo | Uso | Papel |
