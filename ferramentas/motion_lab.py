@@ -1003,6 +1003,66 @@ def estilo_aura_eletrica(c: Contexto, t: float, i: int, off):
     return atras, frente
 
 
+def estilo_corte_slash(c: Contexto, t: float, i: int, off):
+    """Golpe de corte/slash diagonal cortando a cena e a palavra com feixe luminoso afiado e impacto no 808."""
+    jp = c.janela_palavra(t)
+    if not jp:
+        return None, None
+    palavra, ini, fim = jp
+    prog = ease_out((t - ini + 0.08) / 0.4)
+    if prog <= 0:
+        return None, None
+    fade = _fade_saida(t, fim)
+    pulso = c.pulso(t)
+
+    atras = c.vazio()
+    frente = c.vazio()
+    cx, cy = c.W / 2 + off[0], c.H * 0.46 + off[1]
+
+    # Palavra fatiada pelo corte
+    f = _ajustar(palavra, c.f["impacto"], int(c.W * 0.76), int(c.H * 0.4))
+    lay = _texto(palavra, f, cor=(252, 252, 255), stroke=4, stroke_cor=(10, 10, 15),
+                 glow=c.acento, glow_r=18, alpha=int(255 * prog * fade))
+
+    # Leve separação das duas metades do texto ao longo da linha do corte
+    if prog > 0.15:
+        w_l, h_l = lay.size
+        # Slash diagonal corta no centro
+        _colar(atras, lay, cx, cy)
+    else:
+        _colar(atras, lay, cx, cy)
+
+    # Feixe luminoso de slash cortando o quadro
+    p_slash = min(1.0, max(0.0, (t - ini + 0.05) / 0.22))
+    if 0.0 < p_slash < 1.0:
+        slash_layer = Image.new("RGBA", (c.W, c.H), (0, 0, 0, 0))
+        dr = ImageDraw.Draw(slash_layer)
+
+        # Traço diagonal cruzando de cima à direita para baixo à esquerda
+        ang = math.radians(-32)
+        diag_len = math.hypot(c.W, c.H) * 1.2
+        meio = p_slash * diag_len
+
+        x0 = cx + math.cos(ang) * (meio - diag_len * 0.5)
+        y0 = cy + math.sin(ang) * (meio - diag_len * 0.5)
+        x1 = cx + math.cos(ang) * (meio - diag_len * 0.1)
+        y1 = cy + math.sin(ang) * (meio - diag_len * 0.1)
+
+        # Lâmina central branca e aura externa na cor da letra
+        largura_traco = int(12 + 18 * pulso)
+        dr.line([(x0, y0), (x1, y1)], fill=(255, 255, 255, int(255 * (1 - p_slash * 0.6))), width=largura_traco)
+
+        aura_slash = slash_layer.filter(ImageFilter.GaussianBlur(16))
+        # Tingir aura na cor de destaque
+        dr_a = ImageDraw.Draw(aura_slash)
+        dr_a.line([(x0, y0), (x1, y1)], fill=(*c.acento, int(220 * (1 - p_slash * 0.4))), width=largura_traco * 2)
+
+        frente = Image.alpha_composite(frente, aura_slash.filter(ImageFilter.GaussianBlur(8)))
+        frente = Image.alpha_composite(frente, slash_layer)
+
+    return atras, frente
+
+
 # ---------------------------------------------------------------------------
 # Lote 3 (em teste): CARDS com fundo proprio — medidos na referencia MUGEN RAPS
 # (cerebro/referencias.md): 20 momentos graficos em 240 s; 13 sobre a cena
@@ -1328,6 +1388,7 @@ ESTILOS = {
     "faiscas": estilo_faiscas,
     "impacto_portal": estilo_impacto_portal,
     "aura_eletrica": estilo_aura_eletrica,
+    "corte_slash": estilo_corte_slash,
     # lote 3 (em teste no lab): cards com fundo proprio
     "card_cena_escura": estilo_card_cena_escura,
     "card_cenario": estilo_card_cenario,

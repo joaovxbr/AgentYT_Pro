@@ -37,5 +37,5 @@
     "veneno": "#6CFF3A", "verde": "#3DFF7A", "rosa": "#FF4FB8", "branco": "#F4F6FF", "prata": "#D8DEE9"
   },
   "estilos": ["atras_personagem", "palavra_por_palavra", "glitch_slice", "kanji_fundo", "maquina_escrever",
-              "impacto_zoom", "eco_repeticao", "fragmentos", "contorno_energia", "letterbox_cinema", "faiscas", "impacto_portal", "aura_eletrica"]
+              "impacto_zoom", "eco_repeticao", "fragmentos", "contorno_energia", "letterbox_cinema", "faiscas", "impacto_portal", "aura_eletrica", "corte_slash"]
 }

@@ -138,6 +138,13 @@
       "descricao": "Descargas eletricas e relampagos procedurais em zigue-zague contornando o personagem, pulsando no 808.",
       "quando_usar": "Batida agressiva, tecnicas eletricas/raio ou momentos de furia e choque.",
       "evitar": "Trechos sem personagem visivel ou cenas sem batida ritmica."
+    },
+    "corte_slash": {
+      "status": "em_teste", "tipo": "palavra", "camada": "tras+frente", "lote": 4,
+      "gatilhos": {"batida": 1, "atmosfera": 4},
+      "descricao": "Golpe de corte/slash diagonal com feixe luminoso afiado cortando a cena e o texto, sincronizado com o 808.",
+      "quando_usar": "Ataques de espada, golpes cortantes ou momentos de impacto seco e decisivo.",
+      "evitar": "Trechos sem batida de impacto forte."
     }
   }
 }
