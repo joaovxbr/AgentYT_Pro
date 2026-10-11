@@ -29,9 +29,11 @@ COR_BRANCO = (250, 250, 255)
 
 # Fontes
 FONTE_CINZEL_BOLD = RAIZ / "ferramentas" / "fontes" / "Cinzel-Bold.ttf"
+FONTE_CINZEL_DEC = RAIZ / "ferramentas" / "fontes" / "CinzelDecorative-Bold.ttf"
 FONTE_CINZEL = RAIZ / "ferramentas" / "fontes" / "Cinzel-Variable.ttf"
 FONTE_BEBAS = RAIZ / "ferramentas" / "fontes" / "BebasNeue-Regular.ttf"
 FONTE_ANTON = RAIZ / "ferramentas" / "fontes" / "Anton-Regular.ttf"
+FONTE_RUSSO = RAIZ / "ferramentas" / "fontes" / "RussoOne-Regular.ttf"
 FONTE_KANJI = Path("C:/Windows/Fonts/YuGothB.ttc")
 
 
@@ -203,8 +205,8 @@ def render_card_dez_sombras(bg: Image.Image, t_rel: float, dur: float) -> Image.
     td = ImageDraw.Draw(canvas)
     td.text(((W - tw) // 2, int(H * 0.23)), txt_topo, font=font_topo, fill=(215, 235, 255, int(240 * alpha_total)))
 
-    # 6. Titulo Principal: DEZ SOMBRAS (Cinzel Bold com Pop + Glow)
-    font_main = ImageFont.truetype(str(FONTE_CINZEL_BOLD), 148)
+    # 6. Titulo Principal: DEZ SOMBRAS (Cinzel Decorative Bold com Pop + Glow)
+    font_main = ImageFont.truetype(str(FONTE_CINZEL_DEC), 132)
     txt_main = "DEZ SOMBRAS"
     bb_m = font_main.getbbox(txt_main)
     mw, mh = bb_m[2] - bb_m[0], bb_m[3] - bb_m[1]
@@ -283,8 +285,8 @@ def render_card_impacto_frasal(bg: Image.Image, t_rel: float, dur: float) -> Ima
     cw = bb_c[2] - bb_c[0]
     cd.text(((W - cw) // 2, int(H * 0.28)), txt_cima, font=font_cima, fill=(230, 245, 255, int(245 * alpha_total)))
 
-    # 4. Palavra Central GIGANTE: NENHUM DELES (Anton 185px, inclinacao dinamica -2.5 deg)
-    font_punch = ImageFont.truetype(str(FONTE_ANTON), 185)
+    # 4. Palavra Central GIGANTE: NENHUM DELES (Russo One 175px, inclinacao dinamica -2.5 deg)
+    font_punch = ImageFont.truetype(str(FONTE_RUSSO), 175)
     txt_punch = "NENHUM DELES"
     bb_p = font_punch.getbbox(txt_punch)
     pw, ph = bb_p[2] - bb_p[0], bb_p[3] - bb_p[1]
@@ -551,6 +553,9 @@ def gerar_previa_mugen_pro():
     rembg_sessao = rembg.new_session("u2net")
 
     print("Renderizando quadros compostos...")
+    fundo_ia_cand = sorted((dir_proj / "artes_ia").glob("fundo_*.png"))
+    fundo_ia_img = Image.open(fundo_ia_cand[-1]).resize((W, H)) if fundo_ia_cand else None
+
     for idx in range(total_quadros):
         t_sec = idx / FPS
         t_abs = t_global_inicio + t_sec
@@ -561,7 +566,8 @@ def gerar_previa_mugen_pro():
             t_rel = t_sec
             dur_m1 = 3.3
             prog_bg = t_rel / dur_m1
-            bg_tr = tratar_plate_cinematico(q1[idx], luz=0.25, sat=0.50, zoom=1.0 + 0.05 * prog_bg)
+            frame_base = Image.blend(q1[idx], fundo_ia_img, 0.42) if fundo_ia_img else q1[idx]
+            bg_tr = tratar_plate_cinematico(frame_base, luz=0.30, sat=0.65, zoom=1.0 + 0.05 * prog_bg)
             frame_comp = render_card_dez_sombras(bg_tr, t_rel, dur_m1)
 
         elif idx < (n_q1 + n_q2):
