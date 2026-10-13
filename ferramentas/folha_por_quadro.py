@@ -212,7 +212,9 @@ def _chave_ocr(rel: float, fps_ocr: float) -> int:
     return int(round(rel * fps_ocr))
 
 
-def texto_do_take(video: Path, ini: float, dur: float, fps: float = 2.0) -> dict[int, str]:
+def texto_do_take(video: Path, ini: float, dur: float, fps: float = 2.0,
+                  amostras_completas: list | None = None,
+                  cache: Path | None = None) -> dict[int, str]:
     """LE o que esta escrito na tela dentro da janela do take, com o OCR do projeto.
 
     Substitui a deducao "a linha vigente tem de ser a do take": dentro do take a legenda
@@ -223,11 +225,14 @@ def texto_do_take(video: Path, ini: float, dur: float, fps: float = 2.0) -> dict
     Devolve {indice_do_quadro_ocr: texto} com as caixas da metade superior do quadro,
     onde a kinetic text aparece (a legenda de canto fica embaixo e e' ignorada).
     """
-    try:
-        import fonte_limpa as fl
-        amostras = fl.ocr_do_clipe(video, fps, None, fl.cfg())
-    except Exception:
-        return {}
+    if amostras_completas is not None:
+        amostras = amostras_completas
+    else:
+        try:
+            import fonte_limpa as fl
+            amostras = fl.ocr_do_clipe(video, fps, cache, fl.cfg())
+        except Exception:
+            return {}
     ini = max(0.0, float(ini))
     fim = ini + max(0.0, float(dur))
     por_tempo: dict[int, str] = {}
@@ -373,11 +378,20 @@ def auditar(slug: str, fps: float | None = None, escrever_thumbs: bool = True,
     # diagnostico so deduz (e deduz errado): dentro do take a legenda de canto some
     # e o `linha_em` devolve a linha anterior por 0,65 s depois do fim dela.
     ocr_take: dict[str, dict[int, str]] = {}
+    amostras_ocr_master = None
+    if takes:
+        cache_ocr = projeto / "qa" / "folha_por_quadro" / f"{master.stem}_ocr_{OCR_FPS:.1f}fps.json"
+        try:
+            import fonte_limpa as fl
+            amostras_ocr_master = fl.ocr_do_clipe(master, OCR_FPS, cache_ocr, fl.cfg())
+        except Exception:
+            amostras_ocr_master = None
     for tk in takes:
         t0 = _ini_do_take_no_video(master, intro, tk["ini"])
         if t0 is None:
             continue
-        ocr_take[tk["arquivo"]] = texto_do_take(master, t0, tk["fim"] - tk["ini"], OCR_FPS)
+        ocr_take[tk["arquivo"]] = texto_do_take(master, t0, tk["fim"] - tk["ini"], OCR_FPS,
+                                                amostras_completas=amostras_ocr_master)
     comecou_por_take: dict[str, bool] = {}
     for a in amostras:
         tk = next((x for x in takes if x["ini"] <= a.t_corpo < x["fim"]), None)

@@ -23,7 +23,10 @@
     "azul": "蒼", "vermelho": "赫", "dominio": "領域", "olhos": "六眼", "forte": "最強",
     "mais forte": "最強", "morte": "死", "sangue": "血", "poder": "力", "deus": "神",
     "fogo": "炎", "odio": "憎", "vinganca": "復讐", "sombra": "影", "luz": "光",
-    "inimigo": "敵", "guerra": "戦", "rei": "王", "alma": "魂", "medo": "恐"
+    "inimigo": "敵", "guerra": "戦", "rei": "王", "alma": "魂", "medo": "恐",
+    "sukuna": "宿儺", "ryomen": "両面", "santuario": "伏魔御厨子", "fukuma": "伏魔御厨子",
+    "mizushi": "伏魔御厨子", "desmantelar": "解", "clivar": "捌", "fuga": "開",
+    "abrir": "開", "corte": "斬", "cortes": "斬", "maldicao": "呪", "maldicoes": "呪い"
   },
   "kanji_padrao": "力",
   "_cores": "Cor do brilho pela LETRA: palavra de cor/conceito na linha cantada vence a cor tirada da cena. Chave = palavra (sem acento); variantes com o mesmo comeco tambem casam (vermelh-a, azul-ado).",

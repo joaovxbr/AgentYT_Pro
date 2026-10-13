@@ -242,5 +242,20 @@ class JanelaDosTakesTests(unittest.TestCase):
         self.assertTrue(takes[0]["oculta_legenda"])
 
 
+class TextoDoTakeTests(unittest.TestCase):
+    def test_reaproveita_amostras_completas_sem_invocar_ocr(self):
+        amostras = [
+            (10.0, [{"texto": "FUKUMA", "y": 0.40}]),
+            (10.5, [{"texto": "MIZUSHI", "y": 0.45}]),
+            (11.0, [{"texto": "LEGENDA DE BAIXO", "y": 0.85}]),
+            (15.0, [{"texto": "FORA DA JANELA", "y": 0.30}]),
+        ]
+        res = fq.texto_do_take(Path("fake.mp4"), ini=10.0, dur=2.0, fps=2.0,
+                               amostras_completas=amostras)
+        self.assertEqual(res[0], "FUKUMA")
+        self.assertEqual(res[1], "MIZUSHI")
+        self.assertNotIn(2, res)
+
+
 if __name__ == "__main__":
     unittest.main()
