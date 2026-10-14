@@ -54,27 +54,32 @@ def extrair_picos_subgrave(audio_path: str, limite_hz: float = 120.0, hop_length
         
     return eventos
 
-def gerar_filtro_ffmpeg_bass_shake(eventos_grave: list[dict], duracao_total: float) -> str:
+def gerar_filtro_ffmpeg_bass_shake(
+    eventos_grave: list[dict],
+    duracao_total: float,
+    largura: int = 1920,
+    altura: int = 1080,
+) -> str:
     """
     Gera expressão de filtro FFmpeg (crop + scale + rgbashift) com triggers de tempo
     ativados nos momentos exatos dos graves.
     """
     if not eventos_grave:
         return "null"
-        
+
     condicoes = []
     for ev in eventos_grave:
         t_ini = ev["tempo"]
         t_fim = t_ini + ev["duracao"]
         condicoes.append(f"between(t,{t_ini:.3f},{t_fim:.3f})")
-        
+
     trigger_expr = "+".join(condicoes)
-    
+
     # Shake com aberração cromática leve (RGB split) no pico do grave
     filtro = (
         f"split=2[base][shake_layer];"
         f"[shake_layer]rgbashift=rh=8:rv=-4:bh=-8:bv=4[split_rgb];"
-        f"[split_rgb]crop=in_w-30:in_h-30:15+15*sin(t*50):15+15*cos(t*50),scale=1920:1080:flags=fast_bilinear[shaken];"
+        f"[split_rgb]crop=in_w-30:in_h-30:15+15*sin(t*50):15+15*cos(t*50),scale={largura}:{altura}:flags=fast_bilinear[shaken];"
         f"[base][shaken]overlay=enable='{trigger_expr}'"
     )
     return filtro

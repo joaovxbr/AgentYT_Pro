@@ -8,7 +8,6 @@ Converte todo o vídeo para preto e branco de alto contraste, mas preserva UMA c
 - azul/ciano: Olhos do Gojo, Modo Sábio, energia do Jin-Woo
 - amarelo/dourado: Auras de Super Saiyajin, faíscas de raio
 """
-from pathlib import Path
 import sys
 
 CORES_SPLASH = {
@@ -32,7 +31,8 @@ def gerar_filtro_color_splash(
     Totalmente compatível com pipeline linear (-vf) e aceleração por hardware (NVENC).
     """
     t_fim = t_inicio + duracao
-    cfg = CORES_SPLASH.get(cor, CORES_SPLASH["vermelho"])
+    cor_norm = cor.lower().strip() if isinstance(cor, str) else "vermelho"
+    cfg = CORES_SPLASH.get(cor_norm, CORES_SPLASH["vermelho"])
     c = cfg["color"]
     sim = cfg["similarity"]
     blend = cfg["blend"]

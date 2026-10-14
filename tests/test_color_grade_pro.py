@@ -19,12 +19,15 @@ class ColorGradeProTests(unittest.TestCase):
     def test_resolver_arquetipo_por_anime_e_personagem(self):
         self.assertEqual(cgp.resolver_arquetipo(anime="Jujutsu Kaisen"), "cursed_energy")
         self.assertEqual(cgp.resolver_arquetipo(personagem="Ryomen Sukuna"), "cursed_energy")
+        self.assertEqual(cgp.resolver_arquetipo(anime="O Rei das Maldições"), "cursed_energy")
         self.assertEqual(cgp.resolver_arquetipo(anime="Attack on Titan"), "titan_fire")
         self.assertEqual(cgp.resolver_arquetipo(personagem="Eren Yeager"), "titan_fire")
         self.assertEqual(cgp.resolver_arquetipo(anime="Solo Leveling"), "dark_shadow")
         self.assertEqual(cgp.resolver_arquetipo(personagem="Sung Jin-Woo"), "dark_shadow")
         self.assertEqual(cgp.resolver_arquetipo(anime="Demon Slayer"), "demon_blood")
         self.assertEqual(cgp.resolver_arquetipo(personagem="Akaza"), "demon_blood")
+        self.assertEqual(cgp.resolver_arquetipo(personagem="Muzan"), "demon_blood")
+        self.assertEqual(cgp.resolver_arquetipo(personagem="Muzán"), "demon_blood")
 
     def test_resolver_arquetipo_fallback_e_override(self):
         self.assertEqual(cgp.resolver_arquetipo(override="cursed_energy"), "cursed_energy")

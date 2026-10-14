@@ -24,6 +24,12 @@ class ColorSplashTests(unittest.TestCase):
             f = cs.gerar_filtro_color_splash(cor)
             self.assertIn("chromahold=", f)
 
+    def test_case_insensitive_e_espacos(self):
+        f1 = cs.gerar_filtro_color_splash(" Vermelho ")
+        f2 = cs.gerar_filtro_color_splash("AZUL_CIANO")
+        self.assertIn("color=red", f1)
+        self.assertIn("color=0x00D0FF", f2)
+
     def test_catalogo_filtros_contem_color_splash(self):
         self.assertIn("color_splash", filtros.CATALOGO)
         self.assertIn("climax", filtros.RECEITAS)

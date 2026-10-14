@@ -99,7 +99,10 @@ def decidir_transicao(
 
     # Detecção de drop de grave 808/kick alinhado ao corte
     if drops_grave:
-        tem_drop_grave = any(abs(d - boundary) <= 0.14 for d in drops_grave)
+        tem_drop_grave = any(
+            abs((float(d["tempo"]) if isinstance(d, dict) else float(d)) - boundary) <= 0.14
+            for d in drops_grave
+        )
         if tem_drop_grave and (
             avg_intensity >= 0.60
             or b["intensity"] >= 0.70

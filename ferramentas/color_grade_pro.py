@@ -9,7 +9,6 @@ Aplica receitas de cor adaptadas para cada arquétipo de anime:
 - demon_blood (Kimetsu / Akaza): Magenta, sombras escuras e picos de iluminação dramática
 """
 import re
-from pathlib import Path
 
 RECEITAS_COLOR_GRADE = {
     "cursed_energy": {
@@ -40,10 +39,10 @@ RECEITAS_COLOR_GRADE = {
 }
 
 MAPA_ARQUETIPOS = [
-    (r"jujutsu|sukuna|gojo|itadori|megumi|shibuya|maldicao", "cursed_energy"),
+    (r"jujutsu|sukuna|gojo|itadori|megumi|shibuya|maldi[cç]", "cursed_energy"),
     (r"titan|shingeki|eren|levi|armin|mikasa|estrondo", "titan_fire"),
     (r"solo\s*leveling|jin-?woo|monarca|sombras|shadow", "dark_shadow"),
-    (r"demon\s*slayer|kimetsu|akaza|kokushibo|tanjiro|muzán|oni", "demon_blood"),
+    (r"demon\s*slayer|kimetsu|akaza|kokushibo|tanjiro|muz[aá]n|oni", "demon_blood"),
 ]
 
 

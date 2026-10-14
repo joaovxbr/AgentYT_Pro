@@ -45,11 +45,17 @@ class SnapImpactTransitionTests(unittest.TestCase):
             "start": 12.0, "end": 14.0, "preset": "impacto", "type": "lyric",
             "scene_match": {"motion_direction": "right", "scene_intensity": 0.85, "scene_tags": ["impact"]},
         }
-        # Drop de grave exatamente no corte (12.0s)
+        # Drop de grave exatamente no corte (12.0s) como float
         tr = mm.decidir_transicao(a, b, last_fx_time=0.0, drops_grave=[12.02])
         self.assertEqual(tr["type"], "snap_impact")
         self.assertEqual(tr["reason"], "bass_drop_808")
         self.assertGreaterEqual(tr["strength"], 0.70)
+
+        # Drop de grave vindo como lista de dicts (saida de bass_shake.extrair_picos_subgrave)
+        eventos = [{"tempo": 12.01, "intensidade": 0.9, "duracao": 0.16}]
+        tr_dict = mm.decidir_transicao(a, b, last_fx_time=0.0, drops_grave=eventos)
+        self.assertEqual(tr_dict["type"], "snap_impact")
+        self.assertEqual(tr_dict["reason"], "bass_drop_808")
 
 
 if __name__ == "__main__":

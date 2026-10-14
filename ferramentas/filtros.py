@@ -41,6 +41,7 @@ from typing import Callable, Dict, List, Optional, Sequence
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import render_dispatch as rd  # noqa: E402
+import color_splash as cs_mod  # noqa: E402
 
 try:
     import ritmo as ritmo_mod  # noqa: E402
@@ -285,11 +286,10 @@ def _bass_shake(ctx: Contexto) -> str:
 
 def _color_splash(ctx: Contexto) -> str:
     """Isola cor (ex: vermelho) via chromahold e converte o restante para PB de alto contraste."""
-    import color_splash as cs
     cor = "vermelho"
-    if ctx.cor and ctx.cor.lower() in cs.CORES_SPLASH:
+    if ctx.cor and ctx.cor.lower() in cs_mod.CORES_SPLASH:
         cor = ctx.cor.lower()
-    return cs.gerar_filtro_color_splash(cor=cor, t_inicio=0.0, duracao=ctx.duracao or 9999.0)
+    return cs_mod.gerar_filtro_color_splash(cor=cor, t_inicio=0.0, duracao=ctx.duracao or 9999.0)
 
 
 # ---------------------------------------------------------------------------
