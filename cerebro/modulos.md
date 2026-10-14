@@ -99,12 +99,12 @@ Todo arquivo `ferramentas/*.py` precisa aparecer aqui (um teste reprova módulo 
 | `filtros.py` | manual | `filtrar`, `filtros` |
 | `revisao_master.py` | manual | prévias de revisão (Sasuke) |
 | `loop_infinito_916.py` | manual | loop de short |
-| `color_grade_pro.py` | manual | imprime filtro de grade |
+| `color_grade_pro.py` | esteira/manual | color grading cinematográfico por arquétipo (cursed_energy, titan_fire, etc) com lift seguro contra porteiro de imagem |
 | `cinemascope_fx.py` | manual | imprime filtro |
-| `snap_impact_transition.py` | manual | imprime filtro |
+| `snap_impact_transition.py` | esteira/manual | transição de corte com flash pop e snap zoom punch nos drops de grave 808 |
 | `ghosting_fx.py` | manual | imprime filtro |
 | `pixel_sort_glitch.py` | manual | imprime filtro |
-| `color_splash.py` | manual | imprime filtro |
+| `color_splash.py` | esteira/manual | desaturação seletiva (preto e branco de alto contraste isolando cor) via chromahold |
 
 ## QA
 | Módulo | Uso | Papel |

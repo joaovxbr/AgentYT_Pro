@@ -69,7 +69,12 @@ def _impact_pair(tags_a: set[str], tags_b: set[str], intensity: float) -> bool:
     return intensity >= 0.70 and bool((tags_a | tags_b) & IMPACT_TAGS)
 
 
-def decidir_transicao(prev_shot: dict, next_shot: dict, last_fx_time: float = -999.0) -> dict:
+def decidir_transicao(
+    prev_shot: dict,
+    next_shot: dict,
+    last_fx_time: float = -999.0,
+    drops_grave: list[float] | None = None,
+) -> dict:
     """Escolhe a linguagem do corte entre dois shots."""
     boundary = float(prev_shot.get("end", next_shot.get("start", 0.0)))
 
@@ -91,6 +96,23 @@ def decidir_transicao(prev_shot: dict, next_shot: dict, last_fx_time: float = -9
         a["direction"] != "static"
         and b["direction"] == OPPOSITE.get(a["direction"])
     )
+
+    # Detecção de drop de grave 808/kick alinhado ao corte
+    if drops_grave:
+        tem_drop_grave = any(abs(d - boundary) <= 0.14 for d in drops_grave)
+        if tem_drop_grave and (
+            avg_intensity >= 0.60
+            or b["intensity"] >= 0.70
+            or bool((a["tags"] | b["tags"]) & IMPACT_TAGS)
+        ):
+            return {
+                "type": "snap_impact",
+                "direction": a["direction"] if a["direction"] != "static" else b["direction"],
+                "duration": 0.12,
+                "strength": round(min(0.95, 0.70 + 0.20 * avg_intensity), 3),
+                "reason": "bass_drop_808",
+                "boundary": boundary,
+            }
 
     motion_relevant = bool((a["tags"] | b["tags"]) & MOTION_TAGS)
     if same and motion_relevant and avg_intensity >= 0.58:
@@ -138,11 +160,9 @@ def decidir_transicao(prev_shot: dict, next_shot: dict, last_fx_time: float = -9
 
 def _align_camera(shot: dict, direction: str, role: str, transition_type: str) -> None:
     cam = shot.setdefault("camera", {})
-    if direction not in VALID_DIRS or direction == "static":
-        return
-
-    cam["pan"] = direction
-    cam["motion_match"] = True
+    if direction in VALID_DIRS and direction != "static":
+        cam["pan"] = direction
+        cam["motion_match"] = True
 
     z0 = float(cam.get("zoom_inicio", 1.0))
     z1 = float(cam.get("zoom_fim", 1.025))
@@ -154,6 +174,13 @@ def _align_camera(shot: dict, direction: str, role: str, transition_type: str) -
     elif transition_type == "flash_cut":
         if role == "out":
             cam["zoom_fim"] = round(max(z1, z0 + 0.035), 4)
+    elif transition_type == "snap_impact":
+        cam["motion_match"] = True
+        if role == "out":
+            cam["zoom_fim"] = round(max(z1, z0 + 0.040), 4)
+        else:
+            cam["zoom_inicio"] = 1.15
+            cam["zoom_fim"] = round(max(1.0, min(z1, 1.025)), 4)
 
 
 def _zoom_match(prev_shot: dict, next_shot: dict) -> None:
@@ -167,7 +194,7 @@ def _zoom_match(prev_shot: dict, next_shot: dict) -> None:
     b["motion_match"] = True
 
 
-def enriquecer_plano(plano: dict) -> dict:
+def enriquecer_plano(plano: dict, drops_grave: list[float] | None = None) -> dict:
     out = deepcopy(plano)
     shots = out.get("shots", [])
     transitions = []
@@ -179,7 +206,7 @@ def enriquecer_plano(plano: dict) -> dict:
 
     for i in range(len(shots) - 1):
         prev_shot, next_shot = shots[i], shots[i + 1]
-        tr = decidir_transicao(prev_shot, next_shot, last_fx_time)
+        tr = decidir_transicao(prev_shot, next_shot, last_fx_time, drops_grave=drops_grave)
 
         prev_shot["transition_out"] = {
             "type": tr["type"],
@@ -205,6 +232,10 @@ def enriquecer_plano(plano: dict) -> dict:
         elif tr["type"] == "flash_cut":
             _align_camera(prev_shot, tr["direction"], "out", tr["type"])
             last_fx_time = tr["boundary"]
+        elif tr["type"] == "snap_impact":
+            _align_camera(prev_shot, tr["direction"], "out", tr["type"])
+            _align_camera(next_shot, tr["direction"], "in", tr["type"])
+            last_fx_time = tr["boundary"]
 
         transitions.append(tr)
 
@@ -214,7 +245,7 @@ def enriquecer_plano(plano: dict) -> dict:
         "transitions": transitions,
         "counts": {
             name: sum(1 for x in transitions if x["type"] == name)
-            for name in ("match_cut", "zoom_match", "flash_cut", "hard_cut")
+            for name in ("match_cut", "zoom_match", "flash_cut", "snap_impact", "hard_cut")
         },
         "philosophy": "clean_cuts_first_effects_only_when_justified",
     }

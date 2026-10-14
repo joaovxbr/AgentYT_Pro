@@ -99,6 +99,23 @@ def _filtros_transicao(shot: dict | None, segmento: dict,
             filtros.append(
                 f"gblur=sigma=1.15:steps=1:enable='between(t,0,{d:.4f})'"
             )
+    elif tin.get("type") == "snap_impact" and abs(a - seg_start) <= 0.02:
+        d = min(float(tin.get("duration", 0.12)), dur_local * 0.35)
+        if d >= 0.03:
+            strength = max(0.0, min(1.0, float(tin.get("strength", 0.70))))
+            bright = 0.060 + 0.100 * strength
+            shift = int(round(4 + 6 * strength))
+            filtros.append(
+                f"eq=brightness={bright:.4f}:contrast=1.12:saturation=0.95:"
+                f"enable='between(t,0,{d:.4f})'"
+            )
+            filtros.append(
+                f"rgbashift=rh={shift}:bh=-{shift}:"
+                f"enable='between(t,0,{d:.4f})'"
+            )
+            filtros.append(
+                f"gblur=sigma=1.2:steps=1:enable='between(t,0,{d:.4f})'"
+            )
 
     tout = shot.get("transition_out") or {}
     if tout.get("type") == "flash_cut" and abs(b - seg_end) <= 0.02:
@@ -113,6 +130,25 @@ def _filtros_transicao(shot: dict | None, segmento: dict,
             )
             filtros.append(
                 f"gblur=sigma=1.15:steps=1:"
+                f"enable='between(t,{st:.4f},{dur_local:.4f})'"
+            )
+    elif tout.get("type") == "snap_impact" and abs(b - seg_end) <= 0.02:
+        d = min(float(tout.get("duration", 0.08)), dur_local * 0.35)
+        if d >= 0.03:
+            st = max(0.0, dur_local - d)
+            strength = max(0.0, min(1.0, float(tout.get("strength", 0.60))))
+            bright = 0.050 + 0.080 * strength
+            shift = int(round(3 + 5 * strength))
+            filtros.append(
+                f"eq=brightness={bright:.4f}:contrast=1.08:saturation=0.95:"
+                f"enable='between(t,{st:.4f},{dur_local:.4f})'"
+            )
+            filtros.append(
+                f"rgbashift=rh={shift}:bh=-{shift}:"
+                f"enable='between(t,{st:.4f},{dur_local:.4f})'"
+            )
+            filtros.append(
+                f"gblur=sigma=1.2:steps=1:"
                 f"enable='between(t,{st:.4f},{dur_local:.4f})'"
             )
     return filtros

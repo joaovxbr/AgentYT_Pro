@@ -266,6 +266,32 @@ def _pulso_cor(ctx: Contexto) -> str:
     return f"eq=saturation='1+{amp:.3f}*exp(-4*{fase})'"
 
 
+def _bass_shake(ctx: Contexto) -> str:
+    """Tremor sismico de sub-grave (808) com aberracao cromatica no impacto do beat."""
+    if not ctx.tem_ritmo:
+        return ""
+    amp = _lerp(SHAKE_MIN * 1.2, SHAKE_MAX * 1.5, ctx.intensidade)
+    fase = _expr_fase_beat(ctx)
+    decai = f"exp(-8*{fase})"
+    dx = f"{amp:.2f}*{decai}*sin(t*120)"
+    dy = f"{amp:.2f}*{decai}*cos(t*160)"
+    pad = int(amp) + 3
+    return (
+        f"rgbashift=rh=6:bh=-6,"
+        f"pad=iw+{pad * 2}:ih+{pad * 2}:{pad}:{pad}:black,"
+        f"crop=w=iw-{pad * 2}:h=ih-{pad * 2}:x={pad}+({dx}):y={pad}+({dy})"
+    )
+
+
+def _color_splash(ctx: Contexto) -> str:
+    """Isola cor (ex: vermelho) via chromahold e converte o restante para PB de alto contraste."""
+    import color_splash as cs
+    cor = "vermelho"
+    if ctx.cor and ctx.cor.lower() in cs.CORES_SPLASH:
+        cor = ctx.cor.lower()
+    return cs.gerar_filtro_color_splash(cor=cor, t_inicio=0.0, duracao=ctx.duracao or 9999.0)
+
+
 # ---------------------------------------------------------------------------
 # Catalogo
 # ---------------------------------------------------------------------------
@@ -290,6 +316,8 @@ CATALOGO: Dict[str, Efeito] = {
     "shake": Efeito("shake", "tremor de impacto no downbeat", _shake, ritmico=True),
     "flash": Efeito("flash", "clarao branco curto no downbeat", _flash, ritmico=True),
     "pulso_cor": Efeito("pulso_cor", "saturacao pulsando no beat", _pulso_cor, ritmico=True),
+    "bass_shake": Efeito("bass_shake", "tremor sismico de 808 com RGB split no beat", _bass_shake, ritmico=True),
+    "color_splash": Efeito("color_splash", "desaturacao seletiva isolando cor de destaque", _color_splash),
 }
 
 # Receitas prontas: combinacoes que funcionam juntas, testadas no canal.
@@ -299,6 +327,7 @@ RECEITAS: Dict[str, List[str]] = {
     "suave": ["grade_cor", "bloom", "pulso_cor"],
     "cru": ["nitidez", "grao", "vinheta"],
     "short": ["grade_cor", "bloom", "zoom_pulse", "nitidez", "vinheta"],
+    "climax": ["grade_cor", "color_splash", "bass_shake", "bloom", "vinheta"],
 }
 
 
